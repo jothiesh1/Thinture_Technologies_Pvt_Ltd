@@ -147,7 +147,7 @@ fun LoginScreen(navController: NavController) {
                 // Login Button
                 Button(
                     onClick = {
-                        if (username == "info@thinture.com" && password == "111") {
+                        if (username == "abc" && password == "111") {
                             errorMessage = null
                             navController.navigate(Screen.Dashboard.route)
                         } else {

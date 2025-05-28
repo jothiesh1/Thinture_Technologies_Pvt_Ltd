@@ -71,4 +71,15 @@ dependencies {
     implementation ("com.patrykandpatrick.vico:compose-m3:1.13.0")
     implementation("org.osmdroid:osmdroid-android:6.1.16")
 
+
+    // Retrofit for networking
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+
+// Converter for JSON (you can also use Moshi or Scalars if needed)
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+
+// Optional: OkHttp logging interceptor for debug logging
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+
+
 }
