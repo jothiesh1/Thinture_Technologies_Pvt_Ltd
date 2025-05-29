@@ -12,14 +12,17 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.thinturetechnologiespvtltd.R
 import com.example.thinturetechnologiespvtltd.ui.navigation.Screen
@@ -34,6 +37,9 @@ fun LoginScreen(navController: NavController) {
     var expanded by remember { mutableStateOf(false) }
 
     val roles = listOf("Super Admin", "Admin", "Dealer", "Client", "User")
+
+    val passwordFocusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
 
     Box(modifier = Modifier.fillMaxSize()) {
         Image(
@@ -50,7 +56,7 @@ fun LoginScreen(navController: NavController) {
                 .height(540.dp)
                 .align(Alignment.Center)
                 .clip(RoundedCornerShape(24.dp))
-                .background(Color(0xFFF9F9F9)) // Neutral off-white background
+                .background(Color(0xFFF9F9F9))
                 .padding(24.dp)
         ) {
             Column(
@@ -85,7 +91,7 @@ fun LoginScreen(navController: NavController) {
                             .menuAnchor(),
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = Color.White,
-                            unfocusedContainerColor = Color(0xFFEFEFEF), // light grey
+                            unfocusedContainerColor = Color(0xFFEFEFEF),
                             disabledContainerColor = Color.LightGray,
                             focusedIndicatorColor = Color.Gray,
                             unfocusedIndicatorColor = Color.LightGray
@@ -107,7 +113,7 @@ fun LoginScreen(navController: NavController) {
                     }
                 }
 
-                // Username
+                // Username TextField
                 TextField(
                     value = username,
                     onValueChange = { username = it },
@@ -118,22 +124,48 @@ fun LoginScreen(navController: NavController) {
                         unfocusedContainerColor = Color(0xFFEFEFEF),
                         focusedIndicatorColor = Color.Gray,
                         unfocusedIndicatorColor = Color.LightGray
-                    )
+                    ),
+                    keyboardOptions = KeyboardOptions.Default.copy(
+                        imeAction = ImeAction.Next
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onNext = {
+                            passwordFocusRequester.requestFocus()
+                        }
+                    ),
+                    singleLine = true
                 )
 
-                // Password
+                // Password TextField
                 TextField(
                     value = password,
                     onValueChange = { password = it },
                     label = { Text("Password") },
                     visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(passwordFocusRequester),
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color.White,
                         unfocusedContainerColor = Color(0xFFEFEFEF),
                         focusedIndicatorColor = Color.Gray,
                         unfocusedIndicatorColor = Color.LightGray
-                    )
+                    ),
+                    keyboardOptions = KeyboardOptions.Default.copy(
+                        imeAction = ImeAction.Done
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = {
+                            focusManager.clearFocus()
+                            if (username == "abc" && password == "111") {
+                                errorMessage = null
+                                navController.navigate(Screen.Dashboard.route)
+                            } else {
+                                errorMessage = "Invalid credentials"
+                            }
+                        }
+                    ),
+                    singleLine = true
                 )
 
                 if (errorMessage != null) {
@@ -169,5 +201,3 @@ fun LoginScreen(navController: NavController) {
         }
     }
 }
-
-
