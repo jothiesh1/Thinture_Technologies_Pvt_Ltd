@@ -5,6 +5,9 @@
       <SelectionState runConfigName="Thinture_Technologies_Pvt_Ltd.app">
         <option name="selectionMode" value="DROPDOWN" />
       </SelectionState>
+      <SelectionState runConfigName="Thinture_GPS.app">
+        <option name="selectionMode" value="DROPDOWN" />
+      </SelectionState>
     </selectionStates>
   </component>
 </project>

@@ -1,10 +1,9 @@
-package com.example.thinturetechnologiespvtltd.ui.components
+package com.example.gpsapp.ui.components
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
 import androidx.navigation.NavController
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.PaddingValues

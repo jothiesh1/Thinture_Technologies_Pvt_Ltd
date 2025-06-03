@@ -1,4 +1,4 @@
-package com.example.thinturetechnologiespvtltd.ui.components
+package com.example.gpsapp.ui.components
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -16,8 +16,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
-import com.example.thinturetechnologiespvtltd.R
-import com.example.thinturetechnologiespvtltd.ui.navigation.Screen
+import com.example.gpsapp.ui.navigation.Screen
+import com.example.gpsapp.R
+
 
 @Composable
 fun AppDrawer(navController: NavController, onCloseDrawer: () -> Unit) {
@@ -82,13 +83,9 @@ fun DrawerItem(
     val isSelected = currentRoute == route
     val textColor = if (isSelected) MaterialTheme.colorScheme.primary else Color.Black
 
-    Text(
-        text = label,
-        style = MaterialTheme.typography.bodyLarge,
-        color = textColor,
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(12.dp)
             .clickable {
                 if (!isSelected) {
                     navController.navigate(route) {
@@ -98,8 +95,17 @@ fun DrawerItem(
                     onCloseDrawer()
                 }
             }
-    )
+            .padding(12.dp)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = textColor,
+            modifier = Modifier.align(Alignment.CenterStart)
+        )
+    }
 }
+
 
 @Composable
 fun ReportsSection(

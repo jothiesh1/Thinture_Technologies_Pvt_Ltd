@@ -1,12 +1,10 @@
-package com.example.thinturetechnologiespvtltd.ui.screens
+package com.example.gpsapp.ui.screens
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,16 +14,24 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import com.example.thinturetechnologiespvtltd.R
-import com.example.thinturetechnologiespvtltd.ui.navigation.Screen
+import com.example.gpsapp.network.RetrofitClient
+import com.example.gpsapp.data.model.LoginRequest
+import com.example.gpsapp.ui.navigation.Screen
+import kotlinx.coroutines.launch
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.ui.text.input.VisualTransformation
+import com.example.gpsapp.R
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,11 +41,38 @@ fun LoginScreen(navController: NavController) {
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var selectedRole by remember { mutableStateOf("Select Role") }
     var expanded by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(false) }
+    var passwordVisible by remember { mutableStateOf(false) }
 
     val roles = listOf("Super Admin", "Admin", "Dealer", "Client", "User")
 
+    val coroutineScope = rememberCoroutineScope()
     val passwordFocusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
+
+    fun handleLogin() {
+        focusManager.clearFocus()
+        isLoading = true
+        coroutineScope.launch {
+            try {
+                val response = RetrofitClient.apiService.login(
+                    LoginRequest(username.trim(), password.trim())
+                )
+                if (response.isSuccessful && response.body()?.success == true) {
+                    errorMessage = null
+                    navController.navigate(Screen.Dashboard.route) {
+                        popUpTo(Screen.Login.route) { inclusive = true }
+                    }
+                } else {
+                    errorMessage = response.body()?.message ?: "Login failed"
+                }
+            } catch (e: Exception) {
+                errorMessage = "Error: ${e.localizedMessage}"
+            } finally {
+                isLoading = false
+            }
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Image(
@@ -64,7 +97,6 @@ fun LoginScreen(navController: NavController) {
                 verticalArrangement = Arrangement.SpaceEvenly,
                 modifier = Modifier.fillMaxSize()
             ) {
-                // Logo
                 Image(
                     painter = painterResource(id = R.drawable.thinlogo),
                     contentDescription = "Logo",
@@ -73,7 +105,7 @@ fun LoginScreen(navController: NavController) {
                         .padding(bottom = 12.dp)
                 )
 
-                // Role Dropdown
+                // Role Dropdown (unchanged)
                 ExposedDropdownMenuBox(
                     expanded = expanded,
                     onExpandedChange = { expanded = !expanded }
@@ -113,7 +145,7 @@ fun LoginScreen(navController: NavController) {
                     }
                 }
 
-                // Username TextField
+                // Username TextField (unchanged)
                 TextField(
                     value = username,
                     onValueChange = { username = it },
@@ -136,12 +168,12 @@ fun LoginScreen(navController: NavController) {
                     singleLine = true
                 )
 
-                // Password TextField
+                // Updated Password TextField with show/hide feature
                 TextField(
                     value = password,
                     onValueChange = { password = it },
                     label = { Text("Password") },
-                    visualTransformation = PasswordVisualTransformation(),
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                     modifier = Modifier
                         .fillMaxWidth()
                         .focusRequester(passwordFocusRequester),
@@ -155,19 +187,27 @@ fun LoginScreen(navController: NavController) {
                         imeAction = ImeAction.Done
                     ),
                     keyboardActions = KeyboardActions(
-                        onDone = {
-                            focusManager.clearFocus()
-                            if (username == "abc" && password == "111") {
-                                errorMessage = null
-                                navController.navigate(Screen.Dashboard.route)
-                            } else {
-                                errorMessage = "Invalid credentials"
-                            }
-                        }
+                        onDone = { handleLogin() }
                     ),
-                    singleLine = true
+                    singleLine = true,
+                    trailingIcon = {
+                        val icon = if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility
+                        IconButton(onClick = {
+                            passwordVisible = true
+                            coroutineScope.launch {
+                                kotlinx.coroutines.delay(1000)
+                                passwordVisible = false
+                            }
+                        }) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = if (passwordVisible) "Hide password" else "Show password"
+                            )
+                        }
+                    }
                 )
 
+                // Error message (unchanged)
                 if (errorMessage != null) {
                     Text(
                         text = errorMessage!!,
@@ -176,16 +216,9 @@ fun LoginScreen(navController: NavController) {
                     )
                 }
 
-                // Login Button
+                // Login Button (unchanged)
                 Button(
-                    onClick = {
-                        if (username == "abc" && password == "111") {
-                            errorMessage = null
-                            navController.navigate(Screen.Dashboard.route)
-                        } else {
-                            errorMessage = "Invalid credentials"
-                        }
-                    },
+                    onClick = { handleLogin() },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(48.dp)
@@ -193,9 +226,18 @@ fun LoginScreen(navController: NavController) {
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color.DarkGray,
                         contentColor = Color.White
-                    )
+                    ),
+                    enabled = !isLoading
                 ) {
-                    Text("Log In")
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            color = Color.White,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    } else {
+                        Text("Log In")
+                    }
                 }
             }
         }

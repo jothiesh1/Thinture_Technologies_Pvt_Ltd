@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.thinturetechnologiespvtltd"
-    compileSdk = 34
+    namespace = "com.example.gpsapp"
+    compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.thinturetechnologiespvtltd"
+        applicationId = "com.example.gpsapp"
         minSdk = 21
         targetSdk = 34
         versionCode = 1
@@ -46,12 +46,12 @@ android {
 }
 
 dependencies {
-    val composeVersion = "1.6.4"
+    val composeVersion = "1.4.3" // Updated Compose version
     val material3Version = "1.2.1"
 
-    implementation("androidx.core:core-ktx:1.12.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
-    implementation("androidx.activity:activity-compose:1.9.0")
+    implementation("androidx.core:core-ktx:1.16.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.0")
+    implementation("androidx.activity:activity-compose:1.10.1")
 
     implementation("androidx.compose.ui:ui:$composeVersion")
     implementation("androidx.compose.foundation:foundation:$composeVersion")
@@ -70,16 +70,18 @@ dependencies {
     implementation("com.patrykandpatrick.vico:compose-m3:1.13.0")
 
     implementation("org.osmdroid:osmdroid-android:6.1.16")
-    implementation("com.google.android.gms:play-services-maps:18.2.0")
+    implementation(libs.play.services.maps.v1820)
 
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
 
     testImplementation("junit:junit:4.13.2")
-    androidTestImplementation("androidx.test.ext:junit:1.1.5")
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
-    androidTestImplementation("androidx.compose.ui:ui-test-junit4:$composeVersion")
+    androidTestImplementation(libs.androidx.junit.v115)
+    androidTestImplementation(libs.androidx.espresso.core.v351)
+    androidTestImplementation(libs.ui.test.junit4)
     debugImplementation("androidx.compose.ui:ui-tooling:$composeVersion")
     debugImplementation("androidx.compose.ui:ui-test-manifest:$composeVersion")
+
+    implementation ("com.github.PhilJay:MPAndroidChart:v3.1.0")
 }

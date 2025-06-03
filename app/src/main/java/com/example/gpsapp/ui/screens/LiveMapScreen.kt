@@ -1,4 +1,4 @@
-package com.example.thinturetechnologiespvtltd.ui.screens
+package com.example.gpsapp.ui.screens
 
 import android.Manifest
 import android.content.Context
@@ -7,7 +7,8 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.drawable.BitmapDrawable
 import android.widget.Toast
-import androidx.compose.foundation.clickable
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MyLocation
@@ -22,24 +23,35 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
-import com.example.thinturetechnologiespvtltd.R
-import com.example.thinturetechnologiespvtltd.ui.components.ScaffoldWithDrawer
-import kotlinx.coroutines.launch
+import com.example.gpsapp.ui.components.ScaffoldWithDrawer
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
+import com.example.gpsapp.R
 
 @Composable
 fun LiveMapScreen(navController: NavController) {
     val context = LocalContext.current
     val mapView = remember { MapView(context) }
-    val coroutineScope = rememberCoroutineScope()
     var userGeoPoint by remember { mutableStateOf<GeoPoint?>(null) }
     var mapInitialized by remember { mutableStateOf(false) }
 
-    // Initialize OSMDroid
+    val locationPermission = Manifest.permission.ACCESS_FINE_LOCATION
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            startLocationUpdates(context, mapView) { geoPoint ->
+                userGeoPoint = geoPoint
+            }
+        } else {
+            Toast.makeText(context, "Location permission denied", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     LaunchedEffect(Unit) {
         Configuration.getInstance().load(context, context.getSharedPreferences("osm_prefs", Context.MODE_PRIVATE))
         mapView.setTileSource(TileSourceFactory.MAPNIK)
@@ -47,12 +59,18 @@ fun LiveMapScreen(navController: NavController) {
         mapView.setBuiltInZoomControls(true)
         mapView.setBackgroundColor(android.graphics.Color.WHITE)
         mapView.controller.setZoom(18.0)
-        mapView.controller.setCenter(GeoPoint(37.7749, -122.4194)) // Fallback center
+        mapView.controller.setCenter(GeoPoint(37.7749, -122.4194)) // Fallback
         mapInitialized = true
-        checkPermissionsAndStartLocationUpdates(context, mapView) { geoPoint ->
-            userGeoPoint = geoPoint
+
+        if (ContextCompat.checkSelfPermission(context, locationPermission) != PackageManager.PERMISSION_GRANTED) {
+            permissionLauncher.launch(locationPermission)
+        } else {
+            startLocationUpdates(context, mapView) { geoPoint ->
+                userGeoPoint = geoPoint
+            }
         }
     }
+
 
     ScaffoldWithDrawer(navController = navController, screenTitle = "Live Map") { innerPadding ->
         Box(modifier = Modifier

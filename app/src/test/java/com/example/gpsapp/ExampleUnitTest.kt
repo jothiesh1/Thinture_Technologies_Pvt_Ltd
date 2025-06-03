@@ -1,4 +1,4 @@
-package com.example.thinturetechnologiespvtltd
+package com.example.gpsapp
 
 import org.junit.Test
 

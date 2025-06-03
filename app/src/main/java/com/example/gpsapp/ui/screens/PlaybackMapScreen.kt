@@ -1,4 +1,4 @@
-package com.example.thinturetechnologiespvtltd.ui.screens
+package com.example.gpsapp.ui.screens
 
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
@@ -27,8 +27,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.navigation.NavController
-import com.example.thinturetechnologiespvtltd.R
-import com.example.thinturetechnologiespvtltd.ui.components.ScaffoldWithDrawer
+import com.example.gpsapp.ui.components.ScaffoldWithDrawer
 import kotlinx.coroutines.delay
 import org.json.JSONArray
 import org.osmdroid.config.Configuration
@@ -40,6 +39,7 @@ import org.osmdroid.views.overlay.infowindow.InfoWindow
 import java.text.SimpleDateFormat
 import java.util.*
 import android.graphics.Color as AndroidColor
+import com.example.gpsapp.R
 
 data class PlaybackPoint(
     val lat: Double,

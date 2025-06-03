@@ -1,4 +1,4 @@
-package com.example.thinturetechnologiespvtltd
+package com.example.gpsapp
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -8,8 +8,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.navigation.compose.rememberNavController
-import com.example.thinturetechnologiespvtltd.ui.navigation.AppNavHost
-import com.example.thinturetechnologiespvtltd.ui.theme.ThintureTechnologiesPvtLtdTheme
+import com.example.gpsapp.ui.navigation.AppNavHost
+import com.example.gpsapp.ui.theme.ThintureTechnologiesPvtLtdTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {

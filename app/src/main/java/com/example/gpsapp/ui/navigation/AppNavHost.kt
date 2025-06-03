@@ -1,10 +1,10 @@
-package com.example.thinturetechnologiespvtltd.ui.navigation
+package com.example.gpsapp.ui.navigation
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import com.example.thinturetechnologiespvtltd.ui.screens.*
+import com.example.gpsapp.ui.screens.*
 
 @Composable
 fun AppNavHost(

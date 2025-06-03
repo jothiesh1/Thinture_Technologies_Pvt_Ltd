@@ -1,4 +1,4 @@
-package com.example.thinturetechnologiespvtltd.ui.navigation
+package com.example.gpsapp.ui.navigation
 
 sealed class Screen(val route: String) {
     object Login : Screen("login")

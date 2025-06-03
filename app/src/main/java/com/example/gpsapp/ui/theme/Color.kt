@@ -1,4 +1,4 @@
-package com.example.thinturetechnologiespvtltd.ui.theme
+package com.example.gpsapp.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

@@ -38,9 +38,10 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven (url="https://jitpack.io")
     }
 }
 
-rootProject.name = "Thinture Technologies Pvt Ltd"
+rootProject.name = "Thinture GPS"
 include(":app")
  
