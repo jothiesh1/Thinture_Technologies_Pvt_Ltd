@@ -1,0 +1,29 @@
+R_DEF: Internal format may change without notice
+local
+drawable marker_cluster
+string osmbonuspack.directions.1
+string osmbonuspack.directions.12
+string osmbonuspack.directions.17
+string osmbonuspack.directions.18
+string osmbonuspack.directions.19
+string osmbonuspack.directions.2
+string osmbonuspack.directions.24
+string osmbonuspack.directions.27
+string osmbonuspack.directions.28
+string osmbonuspack.directions.29
+string osmbonuspack.directions.3
+string osmbonuspack.directions.30
+string osmbonuspack.directions.31
+string osmbonuspack.directions.32
+string osmbonuspack.directions.33
+string osmbonuspack.directions.34
+string osmbonuspack.directions.4
+string osmbonuspack.directions.5
+string osmbonuspack.directions.6
+string osmbonuspack.directions.7
+string osmbonuspack.directions.8
+string osmbonuspack.format_distance_kilometers
+string osmbonuspack.format_distance_meters
+string osmbonuspack.format_hours
+string osmbonuspack.format_minutes
+string osmbonuspack.format_seconds
