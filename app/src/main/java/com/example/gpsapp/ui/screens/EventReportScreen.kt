@@ -7,10 +7,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -20,32 +20,35 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import com.example.gpsapp.R
+import com.example.gpsapp.data.model.EventReportItem
 import com.example.gpsapp.ui.components.ScaffoldWithDrawer
+import com.example.gpsapp.ui.viewmodel.EventReportViewModel
+import com.google.accompanist.swiperefresh.SwipeRefresh
+import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import java.text.SimpleDateFormat
 import java.util.*
-import com.example.gpsapp.R
-
-
-data class EventReportItem(
-    val deviceId: String,
-    val vehicleNumber: String,
-    val status: String,
-    val timestamp: String,
-    val latitude: Double,
-    val longitude: Double
-)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EventReportScreen(navController: NavController) {
     ScaffoldWithDrawer(navController = navController, screenTitle = "Event Report") { innerPadding ->
+
         val context = LocalContext.current
         var showFilterDialog by remember { mutableStateOf(false) }
         var selectedItem by remember { mutableStateOf<EventReportItem?>(null) }
 
-        val masterList = remember { mutableStateListOf<EventReportItem>() }
-        val eventList = remember { mutableStateListOf<EventReportItem>() }
+        val viewModel: EventReportViewModel = viewModel()
+        val reportList by viewModel.eventReports.collectAsState()
+        val loading by viewModel.isLoading.collectAsState()
+        val errorMessage by viewModel.errorMessage.collectAsState()
+
+        val listState = rememberLazyListState()
+        val swipeRefreshState = rememberSwipeRefreshState(isRefreshing = loading)
 
         var fromDate by remember { mutableStateOf("Select From Date") }
         var toDate by remember { mutableStateOf("Select To Date") }
@@ -53,15 +56,26 @@ fun EventReportScreen(navController: NavController) {
         var status by remember { mutableStateOf("All") }
 
         val statusOptions = listOf("All", "Running", "Idle", "Parked")
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
 
-        fun showDatePicker(setValue: (String) -> Unit) {
+        fun showDatePicker(setValue: (String) -> Unit, isToDate: Boolean = false) {
             val now = Calendar.getInstance()
             DatePickerDialog(
                 context,
                 { _, year, month, day ->
                     val selected = Calendar.getInstance().apply {
-                        set(year, month, day)
+                        set(Calendar.YEAR, year)
+                        set(Calendar.MONTH, month)
+                        set(Calendar.DAY_OF_MONTH, day)
+                        if (isToDate) {
+                            set(Calendar.HOUR_OF_DAY, 23)
+                            set(Calendar.MINUTE, 59)
+                            set(Calendar.SECOND, 59)
+                        } else {
+                            set(Calendar.HOUR_OF_DAY, 0)
+                            set(Calendar.MINUTE, 0)
+                            set(Calendar.SECOND, 0)
+                        }
                     }
                     setValue(dateFormat.format(selected.time))
                 },
@@ -71,27 +85,22 @@ fun EventReportScreen(navController: NavController) {
             ).show()
         }
 
+        // Initial fetch
         LaunchedEffect(Unit) {
-            if (masterList.isEmpty()) {
-                for (i in 1..10) {
-                    val item = EventReportItem(
-                        deviceId = "Dev$i",
-                        vehicleNumber = "Car$i",
-                        status = when {
-                            i % 3 == 0 -> "Idle"
-                            i % 2 == 0 -> "Parked"
-                            else -> "Running"
-                        },
-                        timestamp = "2025-05-${20 + i}",
-                        latitude = 12.9 + i,
-                        longitude = 77.6 + i
-                    )
-                    masterList.add(item)
-                }
-                eventList.clear()
-                eventList.addAll(masterList)
-            }
+            viewModel.fetchEventReports("", "", "", null, reset = true)
         }
+
+        LaunchedEffect(listState) {
+            snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
+                .distinctUntilChanged()
+                .filterNotNull()
+                .collect { lastVisibleItem ->
+                    if (lastVisibleItem >= reportList.size - 3) {
+                        viewModel.loadMoreData()
+                    }
+                }
+        }
+
 
         Box(modifier = Modifier.fillMaxSize()) {
             Image(
@@ -108,15 +117,12 @@ fun EventReportScreen(navController: NavController) {
                     .padding(16.dp),
                 verticalArrangement = Arrangement.Top
             ) {
-                // Page Title
                 Text(
                     text = "Event Status Report",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     textAlign = TextAlign.Center
                 )
 
@@ -138,52 +144,84 @@ fun EventReportScreen(navController: NavController) {
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    item {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            listOf("Dev", "Veh", "Stat", "Time", "Lat", "Long").forEach {
-                                Text(
-                                    it,
-                                    modifier = Modifier.weight(1f),
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp
-                                )
-                            }
-                        }
-                        Divider(color = Color.Gray)
-                    }
+                if (errorMessage != null) {
+                    Text(
+                        text = errorMessage ?: "Unknown error",
+                        color = Color.Red,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
 
-                    items(eventList) { item ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { selectedItem = item }
-                                .padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            listOf(
-                                item.deviceId,
-                                item.vehicleNumber,
-                                item.status,
-                                item.timestamp,
-                                "${item.latitude}".take(6),
-                                "${item.longitude}".take(6)
-                            ).forEach {
-                                Text(
-                                    it,
-                                    modifier = Modifier.weight(1f),
-                                    color = Color.White,
-                                    fontSize = 12.sp
-                                )
+                SwipeRefresh(
+                    state = swipeRefreshState,
+                    onRefresh = {
+                        fromDate = "Select From Date"
+                        toDate = "Select To Date"
+                        vehicleNumber = ""
+                        status = "All"
+                        viewModel.fetchEventReports("", "", "", null, reset = true)
+                    }
+                ) {
+                    LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+                        item {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                listOf("Dev", "Time", "Lat", "Long").forEach {
+                                    Text(
+                                        text = it,
+                                        modifier = Modifier.weight(1f),
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                            HorizontalDivider(color = Color.Gray)
+                        }
+
+                        items(reportList) { item ->
+                            val lat = item.latitude?.toString()?.takeIf { it.length >= 6 }?.substring(0, 6) ?: "-"
+                            val lon = item.longitude?.toString()?.takeIf { it.length >= 6 }?.substring(0, 6) ?: "-"
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { selectedItem = item }
+                                    .padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                listOf(
+                                    item.deviceId ?: "Unknown",
+                                    item.timestamp ?: "Unknown",
+                                    lat,
+                                    lon
+                                ).forEach { text ->
+                                    Text(
+                                        text = text,
+                                        modifier = Modifier.weight(1f),
+                                        color = Color.White,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                            HorizontalDivider(color = Color.Gray)
+                        }
+
+                        item {
+                            if (loading) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator()
+                                }
                             }
                         }
-                        Divider(color = Color.Gray)
                     }
                 }
             }
@@ -197,17 +235,17 @@ fun EventReportScreen(navController: NavController) {
                                 Toast.makeText(context, "Please select From and To date", Toast.LENGTH_SHORT).show()
                                 return@TextButton
                             }
-
-                            val filtered = masterList.filter { item ->
-                                val dateMatch = item.timestamp >= fromDate && item.timestamp <= toDate
-                                val vehicleMatch = vehicleNumber.isBlank() || item.vehicleNumber.contains(vehicleNumber, ignoreCase = true)
-                                val statusMatch = status == "All" || item.status == status
-                                dateMatch && vehicleMatch && statusMatch
+                            if (vehicleNumber.isBlank()) {
+                                Toast.makeText(context, "Please enter a valid Device ID", Toast.LENGTH_SHORT).show()
+                                return@TextButton
                             }
-
-                            eventList.clear()
-                            eventList.addAll(filtered)
-                            Toast.makeText(context, "Filters applied", Toast.LENGTH_SHORT).show()
+                            viewModel.fetchEventReports(
+                                fromDate = fromDate,
+                                toDate = toDate,
+                                vehicleNumber = vehicleNumber.trim(),
+                                status = if (status == "All") null else status,
+                                reset = true
+                            )
                             showFilterDialog = false
                         }) {
                             Text("Apply Filter")
@@ -221,37 +259,35 @@ fun EventReportScreen(navController: NavController) {
                     title = { Text("Filter Events") },
                     text = {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Button(onClick = { showDatePicker { fromDate = it } }) {
+                            Button(onClick = { showDatePicker({ fromDate = it }) }) {
                                 Text(fromDate)
                             }
-                            Button(onClick = { showDatePicker { toDate = it } }) {
+                            Button(onClick = { showDatePicker({ toDate = it }, isToDate = true) }) {
                                 Text(toDate)
                             }
+
                             OutlinedTextField(
                                 value = vehicleNumber,
                                 onValueChange = { vehicleNumber = it },
-                                label = { Text("Vehicle Number") },
+                                label = { Text("Device ID (required)") },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true
                             )
 
                             var expanded by remember { mutableStateOf(false) }
-
                             ExposedDropdownMenuBox(
                                 expanded = expanded,
                                 onExpandedChange = { expanded = !expanded }
                             ) {
                                 OutlinedTextField(
-                                    readOnly = true,
                                     value = status,
                                     onValueChange = {},
+                                    readOnly = true,
                                     label = { Text("Status") },
-                                    trailingIcon = {
-                                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
-                                    },
+                                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                                     modifier = Modifier
-                                        .menuAnchor()
                                         .fillMaxWidth()
+                                        .menuAnchor()
                                 )
                                 ExposedDropdownMenu(
                                     expanded = expanded,
@@ -274,12 +310,8 @@ fun EventReportScreen(navController: NavController) {
                                 toDate = "Select To Date"
                                 vehicleNumber = ""
                                 status = "All"
-                                eventList.clear()
-                                eventList.addAll(masterList)
-                                Toast.makeText(context, "Filters reset", Toast.LENGTH_SHORT).show()
-                                showFilterDialog = false
                             }) {
-                                Text("Reset Filter")
+                                Text("Clear Filters")
                             }
                         }
                     }
@@ -289,20 +321,22 @@ fun EventReportScreen(navController: NavController) {
             selectedItem?.let { item ->
                 AlertDialog(
                     onDismissRequest = { selectedItem = null },
+                    title = { Text("Event Details") },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("Device ID: ${item.deviceId ?: "-"}")
+                            Text("Timestamp: ${item.timestamp ?: "-"}")
+                            Text("Latitude: ${item.latitude ?: "-"}")
+                            Text("Longitude: ${item.longitude ?: "-"}")
+                            Text("Speed: ${item.speed ?: "-"}")
+                            Text("Ignition: ${item.ignition ?: "-"}")
+                            Text("Vehicle Status: ${item.vehicleStatus ?: "-"}")
+                            Text("Additional Data: ${item.additionalData ?: "-"}")
+                        }
+                    },
                     confirmButton = {
                         TextButton(onClick = { selectedItem = null }) {
                             Text("Close")
-                        }
-                    },
-                    title = { Text("Event Details") },
-                    text = {
-                        Column(modifier = Modifier.padding(8.dp)) {
-                            Text("Device ID: ${item.deviceId}")
-                            Text("Vehicle Number: ${item.vehicleNumber}")
-                            Text("Status: ${item.status}")
-                            Text("Timestamp: ${item.timestamp}")
-                            Text("Latitude: ${item.latitude}")
-                            Text("Longitude: ${item.longitude}")
                         }
                     }
                 )
