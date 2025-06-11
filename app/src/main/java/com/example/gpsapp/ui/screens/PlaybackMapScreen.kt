@@ -1,28 +1,42 @@
 package com.example.gpsapp.ui.screens
 
-import android.app.DatePickerDialog
-import android.app.TimePickerDialog
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.drawable.BitmapDrawable
-import android.graphics.drawable.GradientDrawable
-import android.widget.LinearLayout
-import android.widget.TextView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -39,11 +53,11 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
-import org.osmdroid.views.overlay.infowindow.InfoWindow
 import java.io.File
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Locale
 import android.graphics.Color as AndroidColor
+import androidx.compose.ui.graphics.Color as ComposeColor
 
 @Composable
 fun PlaybackMapScreen(navController: NavController) {
@@ -64,7 +78,6 @@ fun PlaybackMapScreen(navController: NavController) {
         var isPlaying by remember { mutableStateOf(false) }
         var sidebarVisible by remember { mutableStateOf(false) }
         var playbackSpeed by remember { mutableStateOf(1.0f) }
-        var shouldRedrawMap by remember { mutableStateOf(false) }
 
         val filteredPlaybackPoints = remember(allPlaybackPoints, deviceId, fromDateTime, toDateTime) {
             val format = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
@@ -75,7 +88,6 @@ fun PlaybackMapScreen(navController: NavController) {
             }
         }
 
-        // Playback animation
         LaunchedEffect(isPlaying, playbackIndex, playbackSpeed) {
             if (isPlaying && playbackIndex < filteredPlaybackPoints.lastIndex) {
                 delay((300L / playbackSpeed).toLong())
@@ -83,7 +95,6 @@ fun PlaybackMapScreen(navController: NavController) {
             }
         }
 
-        // Move marker
         LaunchedEffect(playbackIndex) {
             val point = filteredPlaybackPoints.getOrNull(playbackIndex) ?: return@LaunchedEffect
             val geoPoint = GeoPoint(point.latitude, point.longitude)
@@ -97,12 +108,10 @@ fun PlaybackMapScreen(navController: NavController) {
             }
         }
 
-        // Fetch data
         LaunchedEffect(deviceId, fromDateTime, toDateTime) {
             if (deviceId.isNotBlank() && fromDateTime.isNotBlank() && toDateTime.isNotBlank()) {
                 viewModel.fetchPlaybackData(deviceId, fromDateTime, toDateTime)
                 playbackIndex = 0
-                shouldRedrawMap = true
             }
         }
 
@@ -126,22 +135,37 @@ fun PlaybackMapScreen(navController: NavController) {
                 },
                 update = { mapView ->
                     map = mapView
+                    mapView.overlays.clear()
 
-                    if (shouldRedrawMap && filteredPlaybackPoints.isNotEmpty()) {
-                        shouldRedrawMap = false
-                        mapView.overlays.clear()
-
+                    if (filteredPlaybackPoints.isNotEmpty()) {
                         val startPoint = GeoPoint(filteredPlaybackPoints[0].latitude, filteredPlaybackPoints[0].longitude)
                         val endPoint = GeoPoint(filteredPlaybackPoints.last().latitude, filteredPlaybackPoints.last().longitude)
 
-                        val carBmp = BitmapFactory.decodeResource(mapView.context.resources, R.drawable.car)
+                        // Load car bitmap safely
+                        val carBitmap = try {
+                            BitmapFactory.decodeResource(mapView.context.resources, R.drawable.car)
+                        } catch (e: Exception) {
+                            null
+                        }
+
+                        val scaledBitmap = carBitmap?.let {
+                            Bitmap.createScaledBitmap(it, 100, 100, false)
+                        }
+
                         val carMarker = Marker(mapView).apply {
                             setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                            icon = BitmapDrawable(mapView.context.resources, Bitmap.createScaledBitmap(carBmp, 100, 100, false))
                             position = startPoint
                             snippet = "Lat: ${startPoint.latitude}\nLng: ${startPoint.longitude}\nSpeed: ${filteredPlaybackPoints[0].speed} km/h\nTime: ${filteredPlaybackPoints[0].timestamp}"
                             infoWindow = CustomInfoWindowWithoutXML(mapView.context, mapView)
-                            setOnMarkerClickListener { m, _ -> if (m.isInfoWindowShown) m.closeInfoWindow() else m.showInfoWindow(); true }
+                            icon = scaledBitmap?.let { bmp ->
+                                BitmapDrawable(mapView.context.resources, bmp)
+                            } ?: run {
+                                mapView.context.getDrawable(R.drawable.custom_marker)
+                            }
+                            setOnMarkerClickListener { m, _ ->
+                                if (m.isInfoWindowShown) m.closeInfoWindow() else m.showInfoWindow()
+                                true
+                            }
                         }
 
                         val endMarker = Marker(mapView).apply {
@@ -160,16 +184,17 @@ fun PlaybackMapScreen(navController: NavController) {
                         mapView.overlays.add(polyline)
                         mapView.overlays.add(carMarker)
                         mapView.overlays.add(endMarker)
-                        markerRef = carMarker
-                        endMarkerRef = endMarker
                         mapView.controller.setCenter(startPoint)
                         mapView.invalidate()
+
+                        markerRef = carMarker
+                        endMarkerRef = endMarker
                     }
                 },
                 modifier = Modifier.fillMaxSize()
             )
 
-            // Sidebar
+            // Sidebar UI
             AnimatedVisibility(
                 visible = sidebarVisible,
                 enter = slideInHorizontally(tween(300)) { it },
@@ -192,16 +217,12 @@ fun PlaybackMapScreen(navController: NavController) {
                     DateTimePicker(label = "From", dateTime = fromDateTime) { fromDateTime = it }
                     DateTimePicker(label = "To", dateTime = toDateTime) { toDateTime = it }
 
-                    Button(
-                        onClick = {
-                            if (deviceId.isNotBlank() && fromDateTime.isNotBlank() && toDateTime.isNotBlank()) {
-                                viewModel.fetchPlaybackData(deviceId, fromDateTime, toDateTime)
-                                playbackIndex = 0
-                                shouldRedrawMap = true
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
+                    Button(onClick = {
+                        if (deviceId.isNotBlank() && fromDateTime.isNotBlank() && toDateTime.isNotBlank()) {
+                            viewModel.fetchPlaybackData(deviceId, fromDateTime, toDateTime)
+                            playbackIndex = 0
+                        }
+                    }, modifier = Modifier.fillMaxWidth()) {
                         Text("Search")
                     }
 
