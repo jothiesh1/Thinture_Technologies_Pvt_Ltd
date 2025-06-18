@@ -4,7 +4,14 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import com.example.gpsapp.ui.screens.*
+import com.example.gpsapp.ui.screens.DashboardScreen
+import com.example.gpsapp.ui.screens.DriverReportScreen
+import com.example.gpsapp.ui.screens.EventReportScreen
+import com.example.gpsapp.ui.screens.LiveMapScreen
+import com.example.gpsapp.ui.screens.LoginScreen
+import com.example.gpsapp.ui.screens.LogoutScreen
+import com.example.gpsapp.ui.screens.PlaybackMapScreen
+import com.example.gpsapp.ui.screens.VehicleReportScreen
 
 @Composable
 fun AppNavHost(
