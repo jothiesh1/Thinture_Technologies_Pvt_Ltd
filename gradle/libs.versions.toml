@@ -1,6 +1,6 @@
 [versions]
 accompanistSwiperefresh = "0.33.2-alpha"
-agp = "8.10.1"
+agp = "8.11.0"
 androidxJunit = "1.1.5"
 composeVersion = "1.4.3"
 espressoCoreVersion = "3.5.1"
@@ -13,6 +13,7 @@ lifecycleRuntimeKtx = "2.9.0"
 activityCompose = "1.10.1"
 composeBom = "2024.09.00"
 materialPullrefresh = "1.2.0"
+osmbonuspack = "6.9.0"
 playServicesMaps = "19.2.0"
 playServicesMapsVersion = "18.2.0"
 
@@ -35,6 +36,7 @@ androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-toolin
 androidx-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-material3 = { group = "androidx.compose.material3", name = "material3" }
+osmbonuspack = { module = "org.osmdroid:osmbonuspack", version.ref = "osmbonuspack" }
 play-services-maps = { group = "com.google.android.gms", name = "play-services-maps", version.ref = "playServicesMaps" }
 play-services-maps-v1820 = { module = "com.google.android.gms:play-services-maps", version.ref = "playServicesMapsVersion" }
 ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4", version.ref = "composeVersion" }

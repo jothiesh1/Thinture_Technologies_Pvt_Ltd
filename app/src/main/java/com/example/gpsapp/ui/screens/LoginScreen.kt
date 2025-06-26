@@ -2,11 +2,39 @@ package com.example.gpsapp.ui.screens
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -18,19 +46,15 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import com.example.gpsapp.network.RetrofitClient
-import com.example.gpsapp.data.model.LoginRequest
-import com.example.gpsapp.ui.navigation.Screen
-import kotlinx.coroutines.launch
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.ui.text.input.VisualTransformation
 import com.example.gpsapp.R
+import com.example.gpsapp.data.model.LoginRequest
+import com.example.gpsapp.network.RetrofitClient
+import com.example.gpsapp.ui.navigation.Screen
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -60,8 +84,40 @@ fun LoginScreen(navController: NavController) {
                 )
                 if (response.isSuccessful && response.body()?.success == true) {
                     errorMessage = null
-                    navController.navigate(Screen.Dashboard.route) {
-                        popUpTo(Screen.Login.route) { inclusive = true }
+                    val role = response.body()?.role?.trim()?.lowercase()
+
+                    when (role) {
+                        "superadmin" -> {
+                            navController.navigate(Screen.Dashboard.route) {
+                                popUpTo(Screen.Login.route) { inclusive = true }
+                            }
+                        }
+                        "admin" -> {
+                            navController.navigate(Screen.AdminDashboard.route) {
+                                popUpTo(Screen.Login.route) { inclusive = true }
+                            }
+                        }
+                        "dealer" -> {
+                            // TODO: Create and link DealerDashboardScreen
+                            navController.navigate("dealer_dashboard") {
+                                popUpTo(Screen.Login.route) { inclusive = true }
+                            }
+                        }
+                        "client" -> {
+                            // TODO: Create and link ClientDashboardScreen
+                            navController.navigate("client_dashboard") {
+                                popUpTo(Screen.Login.route) { inclusive = true }
+                            }
+                        }
+                        "user" -> {
+                            // TODO: Create and link UserDashboardScreen
+                            navController.navigate("user_dashboard") {
+                                popUpTo(Screen.Login.route) { inclusive = true }
+                            }
+                        }
+                        else -> {
+                            errorMessage = "Unsupported role: $role"
+                        }
                     }
                 } else {
                     errorMessage = response.body()?.message ?: "Login failed"
@@ -195,7 +251,7 @@ fun LoginScreen(navController: NavController) {
                         IconButton(onClick = {
                             passwordVisible = true
                             coroutineScope.launch {
-                                kotlinx.coroutines.delay(1000)
+                                delay(1000)
                                 passwordVisible = false
                             }
                         }) {

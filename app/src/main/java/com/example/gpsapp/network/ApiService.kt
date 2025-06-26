@@ -1,6 +1,7 @@
 package com.example.gpsapp.network
 
 import com.example.gpsapp.data.model.EventReportItem
+import com.example.gpsapp.data.model.LiveVehicle
 import com.example.gpsapp.data.model.LoginRequest
 import com.example.gpsapp.data.model.LoginResponse
 import retrofit2.Response
@@ -32,4 +33,8 @@ interface ApiService {
         @Query("from") from: String,
         @Query("to") to: String
     ): List<PlaybackPointDto>
+
+    // Live vehicle location endpoint
+    @GET("api/mobile/vehicles/live")
+    suspend fun getLiveVehicles(): Response<List<LiveVehicle>>
 }
