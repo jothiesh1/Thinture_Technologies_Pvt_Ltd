@@ -4,6 +4,8 @@ import com.example.gpsapp.data.model.EventReportItem
 import com.example.gpsapp.data.model.LiveVehicle
 import com.example.gpsapp.data.model.LoginRequest
 import com.example.gpsapp.data.model.LoginResponse
+import com.example.gpsapp.data.model.VehicleStatusResponse
+import com.example.gpsapp.data.model.ViolationReportResponse
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -37,4 +39,12 @@ interface ApiService {
     // Live vehicle location endpoint
     @GET("api/mobile/vehicles/live")
     suspend fun getLiveVehicles(): Response<List<LiveVehicle>>
+
+    @GET("api/android/violation/reports")
+    suspend fun getVehicleViolations(): Response<List<ViolationReportResponse>>
+
+    @GET("api/mobile/vehicles/status")
+    suspend fun getVehicleStatus(): Response<VehicleStatusResponse>
+
+
 }

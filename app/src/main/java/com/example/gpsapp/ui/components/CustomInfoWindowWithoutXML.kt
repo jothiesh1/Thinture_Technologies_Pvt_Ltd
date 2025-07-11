@@ -89,7 +89,10 @@ class CustomInfoWindowWithoutXML(
     }
 
     override fun onOpen(item: Any?) {
-        if (!userTappedToOpen) return
+        if (!userTappedToOpen){
+            close()
+            return
+        }
 
         val marker = item as? Marker ?: return
         mSelectedMarker = marker

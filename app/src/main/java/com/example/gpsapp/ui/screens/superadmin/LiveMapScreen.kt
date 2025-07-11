@@ -104,6 +104,7 @@ fun getRotatedBitmapDrawableLive(context: Context, angle: Float): BitmapDrawable
 fun LiveMapScreen(navController: NavController) {
     val context = LocalContext.current
     val mapView = remember { MapView(context) }
+    var selectedMarker by remember { mutableStateOf<Marker?>(null) }
     val mapInitialized = remember { mutableStateOf(false) }
     val vehicleMarkers = remember { mutableStateMapOf<String, Marker>() }
     var isSidebarVisible by remember { mutableStateOf(false) }
@@ -161,9 +162,14 @@ fun LiveMapScreen(navController: NavController) {
                             infoWindow = customInfoWindow
 
                             setOnMarkerClickListener { m, _ ->
+                                if (selectedMarker != m) {
+                                    selectedMarker?.closeInfoWindow()
+                                    selectedMarker = m
+                                }
                                 customInfoWindow.userTappedToOpen = true
-                                if (m.isInfoWindowShown) m.closeInfoWindow()
-                                else m.showInfoWindow()
+                                if (!m.isInfoWindowShown) {
+                                    m.showInfoWindow()
+                                }
                                 true
                             }
                         }
@@ -195,7 +201,9 @@ fun LiveMapScreen(navController: NavController) {
                             )
                         }
 
-                        customInfoWindow.refresh(marker)
+                        if (marker == selectedMarker) {
+                            customInfoWindow.refresh(marker)
+                        }
                     }
                 }
                 mapView.invalidate()
@@ -234,6 +242,7 @@ fun LiveMapScreen(navController: NavController) {
                 .padding(padding)
                 .clickable {
                     vehicleMarkers.values.forEach { it.closeInfoWindow() }
+                    selectedMarker = null
                 }
         ) {
             if (mapInitialized.value) {
@@ -301,9 +310,15 @@ fun LiveMapScreen(navController: NavController) {
                     Text("Live Vehicles", style = MaterialTheme.typography.titleMedium)
                     LazyColumn {
                         items(filtered) { v ->
-                            VehicleRow(v, vehicleMarkers[v.deviceId], mapView, customInfoWindow) {
-                                isSidebarVisible = false
-                            }
+                            VehicleRow(
+                                vehicle = v,
+                                marker = vehicleMarkers[v.deviceId],
+                                mapView = mapView,
+                                infoWindow = customInfoWindow,
+                                selectedMarker = selectedMarker,
+                                setSelectedMarker = { selectedMarker = it },
+                                onLocate = { isSidebarVisible = false }
+                            )
                         }
                     }
                 }
@@ -340,6 +355,8 @@ private fun VehicleRow(
     marker: Marker?,
     mapView: MapView,
     infoWindow: CustomInfoWindowWithoutXML,
+    selectedMarker: Marker?,
+    setSelectedMarker: (Marker?) -> Unit,
     onLocate: () -> Unit
 ) {
     Row(
@@ -355,8 +372,11 @@ private fun VehicleRow(
             marker?.let {
                 mapView.controller.setZoom(18.0)
                 mapView.controller.setCenter(it.position)
-                infoWindow.userTappedToOpen = true // ✅ Only this line
+                selectedMarker?.closeInfoWindow()
+                setSelectedMarker(it)
+                infoWindow.userTappedToOpen = true
                 it.showInfoWindow()
+
                 onLocate()
             }
         }, Modifier.weight(0.5f)) {

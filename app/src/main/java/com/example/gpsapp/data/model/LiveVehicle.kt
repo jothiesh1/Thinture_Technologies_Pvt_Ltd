@@ -3,9 +3,9 @@ package com.example.gpsapp.data.model
 data class LiveVehicle(
     val vehicleId: Int,
     val deviceId: String,
-    val vehicleNumber: String,
-    val vehicleType: String,
-    val ownerName: String,
+    val vehicleNumber: String?,
+    val vehicleType: String?,
+    val ownerName: String?,
     val imei: String,
     val latitude: Double,
     val longitude: Double,

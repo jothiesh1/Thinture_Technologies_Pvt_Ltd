@@ -93,25 +93,24 @@ fun LoginScreen(navController: NavController) {
                             }
                         }
                         "admin" -> {
-                            navController.navigate(Screen.AdminDashboard.route) {
+                            navController.navigate(Screen.AdminDashboard.route)
+                            {
                                 popUpTo(Screen.Login.route) { inclusive = true }
                             }
                         }
                         "dealer" -> {
-                            // TODO: Create and link DealerDashboardScreen
-                            navController.navigate("dealer_dashboard") {
+                            navController.navigate(Screen.DealerDashboard.route)
+                            {
                                 popUpTo(Screen.Login.route) { inclusive = true }
                             }
                         }
                         "client" -> {
-                            // TODO: Create and link ClientDashboardScreen
-                            navController.navigate("client_dashboard") {
+                            navController.navigate(Screen.ClientDashboard.route) {
                                 popUpTo(Screen.Login.route) { inclusive = true }
                             }
                         }
                         "user" -> {
-                            // TODO: Create and link UserDashboardScreen
-                            navController.navigate("user_dashboard") {
+                            navController.navigate(Screen.UserDashboard.route) {
                                 popUpTo(Screen.Login.route) { inclusive = true }
                             }
                         }

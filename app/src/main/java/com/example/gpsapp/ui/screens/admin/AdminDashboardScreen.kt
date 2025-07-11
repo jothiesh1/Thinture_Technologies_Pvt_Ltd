@@ -2,6 +2,7 @@ package com.example.gpsapp.ui.screens.admin
 
 import android.graphics.Color.TRANSPARENT
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,7 +35,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
 import com.example.gpsapp.R
+import com.example.gpsapp.data.model.DashboardViewModel
 import com.example.gpsapp.ui.components.ScaffoldWithDrawer
+import com.example.gpsapp.ui.screens.dealer.MinimalHorizontalBarChart
 import com.github.mikephil.charting.charts.HorizontalBarChart
 import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.BarData
@@ -44,10 +49,14 @@ import com.github.mikephil.charting.highlight.Highlight
 import com.github.mikephil.charting.listener.OnChartValueSelectedListener
 
 @Composable
-fun AdminDashboardScreen(navController: NavController) {
+fun AdminDashboardScreen(
+    navController: NavController,
+    viewModel: DashboardViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+) {
     var dialogState by remember { mutableStateOf(false) }
     var dialogLabel by remember { mutableStateOf("") }
     var dialogValue by remember { mutableStateOf(0f) }
+    val status by viewModel.statusData.collectAsState()
 
     ScaffoldWithDrawer(
         navController = navController,
@@ -66,6 +75,12 @@ fun AdminDashboardScreen(navController: NavController) {
                 modifier = Modifier.fillMaxSize()
             )
 
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xAA000000))
+            )
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -74,7 +89,7 @@ fun AdminDashboardScreen(navController: NavController) {
                 verticalArrangement = Arrangement.Top
             ) {
                 Text(
-                    text = "Admin Fleet Overview",
+                    text = "Fleet Dashboard",
                     style = MaterialTheme.typography.headlineSmall.copy(color = Color.White),
                     fontWeight = FontWeight.Bold
                 )
@@ -82,32 +97,47 @@ fun AdminDashboardScreen(navController: NavController) {
                 Spacer(modifier = Modifier.height(32.dp))
 
                 Text(
-                    text = "Vehicle Summary",
+                    text = "Vehicle Status",
                     style = MaterialTheme.typography.titleMedium.copy(color = Color.White)
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                MinimalHorizontalBarChart(
-                    labels = listOf("Running", "Idle", "Parked", "Offline"),
-                    values = listOf(30f, 22f, 18f, 10f),
-                    barColors = listOf("#4CAF50", "#FFC107", "#2196F3", "#F44336"),
-                    onBarTapped = { label, value ->
-                        dialogLabel = label
-                        dialogValue = value
-                        dialogState = true
-                    }
-                )
+
+                if (status == null) {
+                    Text("Loading vehicle status...", color = Color.White)
+                } else {
+                    val running = (status?.moving ?: 0).toFloat()
+                    val idle = (status?.idle ?: 0).toFloat()
+                    val parked = (status?.parked ?: 0).toFloat()
+                    val offline = (status?.offline ?: 0).toFloat()
+
+                    MinimalHorizontalBarChart(
+                        labels = listOf("Running", "Idle", "Parked", "Offline"),
+                        values = listOf(running, idle, parked, offline),
+                        barColors = listOf("#4CAF50", "#FFC107", "#2196F3", "#F44336"),
+                        onBarTapped = { label, value ->
+                            dialogLabel = label
+                            dialogValue = value
+                            dialogState = true
+                        }
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(48.dp))
 
                 Text(
-                    text = "User Types",
+                    text = "User Distribution",
                     style = MaterialTheme.typography.titleMedium.copy(color = Color.White)
                 )
                 Spacer(modifier = Modifier.height(8.dp))
+                val admins = 5f
+                val dealers = 12f
+                val clients = 17f
+                val users = 40f
+
                 MinimalHorizontalBarChart(
-                    labels = listOf("Client", "Dealer", "User"),
-                    values = listOf(20f, 15f, 65f),
-                    barColors = listOf("#00BCD4", "#8BC34A", "#FF9800"),
+                    labels = listOf("Admins", "Dealers", "Clients", "Users"),
+                    values = listOf(admins, dealers, clients, users),
+                    barColors = listOf("#03A9F4", "#8BC34A"),
                     onBarTapped = { label, value ->
                         dialogLabel = label
                         dialogValue = value
@@ -143,68 +173,72 @@ fun MinimalHorizontalBarChart(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+
+    val chart = remember {
+        HorizontalBarChart(context).apply {
+            setBackgroundColor(TRANSPARENT)
+            setDrawGridBackground(false)
+            setDrawBorders(false)
+            description.isEnabled = false
+            legend.isEnabled = false
+            setTouchEnabled(true)
+            setScaleEnabled(false)
+
+            axisLeft.isEnabled = false
+            axisRight.apply {
+                isEnabled = true
+                axisMinimum = 0f
+                textColor = android.graphics.Color.LTGRAY
+                textSize = 10f
+            }
+
+            xAxis.apply {
+                position = XAxis.XAxisPosition.BOTTOM
+                valueFormatter = IndexAxisValueFormatter(labels)
+                setDrawGridLines(false)
+                setDrawAxisLine(false)
+                setDrawLabels(true)
+                granularity = 1f
+                isGranularityEnabled = true
+                labelCount = labels.size
+                textColor = android.graphics.Color.LTGRAY
+                textSize = 10f
+            }
+
+            setOnChartValueSelectedListener(object : OnChartValueSelectedListener {
+                override fun onValueSelected(e: Entry?, h: Highlight?) {
+                    e?.let {
+                        val index = it.x.toInt()
+                        onBarTapped(labels[index], it.y)
+                    }
+                }
+
+                override fun onNothingSelected() {}
+            })
+        }
+    }
+
+    LaunchedEffect(values) {
+        val entries = values.mapIndexed { i, v -> BarEntry(i.toFloat(), v) }
+        val dataSet = BarDataSet(entries, "").apply {
+            colors = barColors.map { android.graphics.Color.parseColor(it) }
+            valueTextSize = 12f
+            valueTextColor = android.graphics.Color.WHITE
+            setDrawValues(true)
+        }
+
+        chart.data = BarData(dataSet).apply {
+            barWidth = 0.5f
+        }
+
+        chart.invalidate()
+    }
+
     AndroidView(
         modifier = modifier
             .fillMaxWidth(0.9f)
             .height(260.dp),
-        factory = {
-            HorizontalBarChart(context).apply {
-                setBackgroundColor(TRANSPARENT)
-                setDrawGridBackground(false)
-                setDrawBorders(false)
-                description.isEnabled = false
-                legend.isEnabled = false
-                setTouchEnabled(true)
-                setScaleEnabled(false)
-                animateY(1000)
-
-                axisLeft.isEnabled = false
-                axisRight.apply {
-                    isEnabled = true
-                    axisMinimum = 0f
-                    textColor = android.graphics.Color.LTGRAY
-                    textSize = 10f
-                }
-
-                xAxis.apply {
-                    position = XAxis.XAxisPosition.BOTTOM
-                    valueFormatter = IndexAxisValueFormatter(labels)
-                    setDrawGridLines(false)
-                    setDrawAxisLine(false)
-                    setDrawLabels(true)
-                    granularity = 1f
-                    isGranularityEnabled = true
-                    labelCount = labels.size
-                    textColor = android.graphics.Color.LTGRAY
-                    textSize = 10f
-                }
-
-                val entries = values.mapIndexed { i, v -> BarEntry(i.toFloat(), v) }
-                val dataSet = BarDataSet(entries, "").apply {
-                    colors = barColors.map { android.graphics.Color.parseColor(it) }
-                    valueTextSize = 12f
-                    valueTextColor = android.graphics.Color.WHITE
-                    setDrawValues(true)
-                }
-
-                data = BarData(dataSet).apply {
-                    barWidth = 0.5f
-                }
-
-                setOnChartValueSelectedListener(object : OnChartValueSelectedListener {
-                    override fun onValueSelected(e: Entry?, h: Highlight?) {
-                        e?.let {
-                            val index = it.x.toInt()
-                            onBarTapped(labels[index], it.y)
-                        }
-                    }
-
-                    override fun onNothingSelected() {}
-                })
-
-                invalidate()
-            }
-        }
+        factory = { chart }
     )
 }
 

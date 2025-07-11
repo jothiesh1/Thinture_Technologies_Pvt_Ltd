@@ -54,30 +54,140 @@ fun AppDrawer(
 
         when (role.lowercase()) {
             "superadmin" -> {
-                DrawerItem("Dashboard", Screen.Dashboard.route, currentRoute, navController, onCloseDrawer)
-                DrawerItem("Live Map", Screen.LiveMap.route, currentRoute, navController, onCloseDrawer)
-                DrawerItem("Playback Map", Screen.Playback.route, currentRoute, navController, onCloseDrawer)
+                DrawerItem(
+                    "Dashboard",
+                    Screen.Dashboard.route,
+                    currentRoute,
+                    navController,
+                    onCloseDrawer
+                )
+                DrawerItem(
+                    "Live Map",
+                    Screen.LiveMap.route,
+                    currentRoute,
+                    navController,
+                    onCloseDrawer
+                )
+                DrawerItem(
+                    "Playback Map",
+                    Screen.Playback.route,
+                    currentRoute,
+                    navController,
+                    onCloseDrawer
+                )
                 Spacer(modifier = Modifier.height(8.dp))
                 ReportsSection(currentRoute, navController, onCloseDrawer)
             }
+
             "admin" -> {
-                DrawerItem("Dashboard", Screen.AdminDashboard.route, currentRoute, navController, onCloseDrawer)
-                DrawerItem("Live Map", Screen.LiveMap.route, currentRoute, navController, onCloseDrawer)
+                DrawerItem(
+                    "Dashboard",
+                    Screen.AdminDashboard.route,
+                    currentRoute,
+                    navController,
+                    onCloseDrawer
+                )
+                DrawerItem(
+                    label = "Live Map",
+                    route = Screen.AdminLiveMap.route,
+                    currentRoute = currentRoute,
+                    navController = navController,
+                    onCloseDrawer = onCloseDrawer
+                )
+                DrawerItem(
+                    label = "Playback Map",
+                    route = Screen.AdminPlaybackMap.createRoute("admin"),
+                    currentRoute = currentRoute,
+                    navController = navController,
+                    onCloseDrawer = onCloseDrawer
+                )
+                ReportsSection(currentRoute, navController, onCloseDrawer)
             }
+
             "dealer" -> {
-                DrawerItem("Dashboard", Screen.DealerDashboard.route, currentRoute, navController, onCloseDrawer)
+                DrawerItem(
+                    "Dashboard",
+                    Screen.DealerDashboard.route,
+                    currentRoute,
+                    navController,
+                    onCloseDrawer
+                )
+                DrawerItem(
+                    "Live Map",
+                    Screen.DealerLiveMap.route,
+                    currentRoute,
+                    navController,
+                    onCloseDrawer
+                )
+
+                DrawerItem(
+                    "Playback Map",
+                    route = Screen.AdminPlaybackMap.createRoute("dealer"),
+                    currentRoute,
+                    navController,
+                    onCloseDrawer
+                )
+                ReportsSection(currentRoute, navController, onCloseDrawer)
             }
+
             "client" -> {
-                DrawerItem("Dashboard", Screen.ClientDashboard.route, currentRoute, navController, onCloseDrawer)
+                DrawerItem(
+                    "Dashboard",
+                    Screen.ClientDashboard.route,
+                    currentRoute,
+                    navController,
+                    onCloseDrawer
+                )
+                DrawerItem(
+                    "Live Map",
+                    Screen.ClientLiveMap.route,
+                    currentRoute,
+                    navController,
+                    onCloseDrawer
+                )
+                DrawerItem(
+                    label = "Playback Map",
+                    route = Screen.ClientPlaybackMap.createRoute("client"),
+                    currentRoute = currentRoute,
+                    navController = navController,
+                    onCloseDrawer = onCloseDrawer
+                )
+                ReportsSection(currentRoute, navController, onCloseDrawer)
             }
+
             "user" -> {
-                DrawerItem("Dashboard", Screen.UserDashboard.route, currentRoute, navController, onCloseDrawer)
+                DrawerItem(
+                            "Dashboard",
+                            Screen.UserDashboard.route,
+                            currentRoute,
+                            navController,
+                            onCloseDrawer
+                )
+                DrawerItem(
+                    "Live Map",
+                    Screen.UserLiveMap.route,
+                    currentRoute,
+                    navController,
+                    onCloseDrawer
+                )
+                DrawerItem(
+                    label = "Playback Map",
+                    route = Screen.UserPlaybackMap.createRoute("user"),
+                    currentRoute = currentRoute,
+                    navController = navController,
+                    onCloseDrawer = onCloseDrawer
+                )
+                ReportsSection(currentRoute, navController, onCloseDrawer)
             }
         }
-
         Spacer(modifier = Modifier.weight(1f))
-
-        DrawerItem("Logout", Screen.Logout.route, currentRoute, navController, onCloseDrawer)
+        DrawerItem(
+            "Logout",
+            Screen.Logout.route,
+            currentRoute,
+            navController,
+            onCloseDrawer
+        )
     }
 }
 
@@ -137,7 +247,8 @@ fun DrawerItem(
 fun ReportsSection(
     currentRoute: String?,
     navController: NavController,
-    onCloseDrawer: () -> Unit
+    onCloseDrawer: () -> Unit,
+    role: String = "superadmin"
 ) {
     var expanded by remember { mutableStateOf(false) }
 
@@ -161,9 +272,39 @@ fun ReportsSection(
 
     if (expanded) {
         Column(modifier = Modifier.padding(start = 16.dp)) {
-            DrawerItem("Event Report", Screen.EventReport.route, currentRoute, navController, onCloseDrawer)
-            DrawerItem("Vehicle Report", Screen.VehicleReport.route, currentRoute, navController, onCloseDrawer)
-            DrawerItem("Driver Report", Screen.DriverReport.route, currentRoute, navController, onCloseDrawer)
+            when (role.lowercase()) {
+
+                "superadmin" -> {
+                    DrawerItem("Event Report", Screen.EventReport.route, currentRoute, navController, onCloseDrawer)
+                    DrawerItem("Vehicle Report", Screen.VehicleReport.route, currentRoute, navController, onCloseDrawer)
+                    DrawerItem("Driver Report", Screen.DriverReport.route, currentRoute, navController, onCloseDrawer)
+                }
+
+                "admin" -> {
+                    DrawerItem("Event Report", Screen.AdminEventReport.route, currentRoute, navController, onCloseDrawer)
+                    DrawerItem("Vehicle Report", Screen.AdminVehicleReport.route, currentRoute, navController, onCloseDrawer)
+                    DrawerItem("Driver Report", Screen.AdminDriverReport.route, currentRoute, navController, onCloseDrawer)
+                }
+
+                "dealer" -> {
+                    DrawerItem("Event Report", Screen.DealerEventReport.route, currentRoute, navController, onCloseDrawer)
+                    DrawerItem("Vehicle Report", Screen.DealerVehicleReport.route, currentRoute, navController, onCloseDrawer)
+                    DrawerItem("Driver Report", Screen.DealerDriverReport.route, currentRoute, navController, onCloseDrawer)
+                }
+
+                "client" -> {
+                    DrawerItem("Event Report", Screen.ClientEventReport.route, currentRoute, navController, onCloseDrawer)
+                    DrawerItem("Vehicle Report", Screen.ClientVehicleReport.route, currentRoute, navController, onCloseDrawer)
+                    DrawerItem("Driver Report", Screen.ClientDriverReport.route, currentRoute, navController, onCloseDrawer)
+                }
+
+                "user" -> {
+                    DrawerItem("Event Report", Screen.UserEventReport.route, currentRoute, navController, onCloseDrawer)
+                    DrawerItem("Vehicle Report", Screen.UserVehicleReport.route, currentRoute, navController, onCloseDrawer)
+                    DrawerItem("Driver Report", Screen.UserDriverReport.route, currentRoute, navController, onCloseDrawer)
+                }
+            }
         }
     }
 }
+

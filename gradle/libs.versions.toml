@@ -1,6 +1,6 @@
 [versions]
 accompanistSwiperefresh = "0.33.2-alpha"
-agp = "8.11.0"
+agp = "8.11.1"
 androidxJunit = "1.1.5"
 composeVersion = "1.4.3"
 espressoCoreVersion = "3.5.1"
