@@ -22,16 +22,23 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.example.gpsapp.R
+import com.example.gpsapp.data.local.UserPreferences
 import com.example.gpsapp.ui.navigation.Screen
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.launch
 
 @Composable
 fun AppDrawer(
@@ -41,6 +48,9 @@ fun AppDrawer(
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
 
     Column(
         modifier = Modifier
@@ -181,13 +191,34 @@ fun AppDrawer(
             }
         }
         Spacer(modifier = Modifier.weight(1f))
-        DrawerItem(
-            "Logout",
-            Screen.Logout.route,
-            currentRoute,
-            navController,
-            onCloseDrawer
-        )
+        val context = LocalContext.current
+        val coroutineScope = rememberCoroutineScope()
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable {
+                    coroutineScope.launch {
+                        val userPrefs = UserPreferences(context)
+                        userPrefs.clearLogin()
+
+                        // Navigate to login screen and clear backstack
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
+
+                        onCloseDrawer()
+                    }
+                }
+                .padding(12.dp)
+        ) {
+            Text(
+                text = "Logout",
+                style = MaterialTheme.typography.bodyLarge,
+                color = Color.Black,
+                modifier = Modifier.align(Alignment.CenterStart)
+            )
+        }
     }
 }
 

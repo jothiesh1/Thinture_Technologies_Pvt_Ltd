@@ -110,4 +110,7 @@ dependencies {
 
     implementation("com.google.accompanist:accompanist-swiperefresh:0.36.0")
 
+    implementation("androidx.datastore:datastore-preferences:1.1.7")
+
+    implementation("androidx.compose.ui:ui-text:")
 }

@@ -5,6 +5,7 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.example.gpsapp.ui.screens.ForgotPasswordScreen
 import com.example.gpsapp.ui.screens.LoginScreen
 import com.example.gpsapp.ui.screens.LogoutScreen
 import com.example.gpsapp.ui.screens.admin.AdminDashboardScreen
@@ -53,6 +54,11 @@ fun AppNavHost(
             LoginScreen(navController)
         }
 
+        composable(Screen.ForgotPassword.route) {
+            ForgotPasswordScreen(navController)
+        }
+
+
 
         //Dashboard
         composable(Screen.Dashboard.route) {
@@ -91,9 +97,9 @@ fun AppNavHost(
 
 
         //Playback Map
-        composable(Screen.Playback.route + "/{deviceId}") { backStackEntry ->
+        composable(Screen.Playback.route) { backStackEntry ->
             val deviceId = backStackEntry.arguments?.getString("deviceId") ?: ""
-            PlaybackMapScreen(navController, deviceId)
+            PlaybackMapScreen(navController = navController, DeviceId = deviceId)
         }
         composable(Screen.AdminPlaybackMap.route + "/{deviceId}") { backStackEntry ->
             val deviceId = backStackEntry.arguments?.getString("deviceId") ?: ""

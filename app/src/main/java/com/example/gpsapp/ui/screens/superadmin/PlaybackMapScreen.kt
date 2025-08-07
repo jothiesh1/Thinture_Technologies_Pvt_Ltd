@@ -76,11 +76,11 @@ fun getRotatedBitmapDrawable(context: Context, angle: Float): BitmapDrawable {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PlaybackMapScreen(navController: NavController, deviceId: String) {
+fun PlaybackMapScreen(navController: NavController, DeviceId: String){
     ScaffoldWithDrawer(
         navController = navController,
         screenTitle = "Playback Map",
-        role = "superadmin" // or "admin", "dealer", "client", "user" based on who is logged in
+        role = "superadmin"
     ) { innerPadding ->
         val context = LocalContext.current
         val viewModel: PlaybackMapViewModel = viewModel()

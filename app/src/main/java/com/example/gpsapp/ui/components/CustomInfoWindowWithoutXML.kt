@@ -43,7 +43,10 @@ class CustomInfoWindowWithoutXML(
 
     init {
         scrollView.setBackgroundColor(Color.WHITE)
+        scrollView.setBackgroundResource(android.R.drawable.dialog_holo_light_frame)
         scrollView.setPadding(16, 16, 16, 16)
+        scrollView.elevation = 8f
+
 
         container.orientation = LinearLayout.VERTICAL
         container.setPadding(16, 16, 16, 16)
@@ -59,35 +62,37 @@ class CustomInfoWindowWithoutXML(
 
     private fun createRow(): LinearLayout {
         val layout = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 8, 0, 8)
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, 12, 0, 12)
         }
+
         val label = TextView(context).apply {
-            textSize = 14f
-            setTextColor(Color.BLACK)
-            setPadding(0, 0, 16, 0)
-        }
-        val value = TextView(context).apply {
-            textSize = 14f
+            textSize = 13f
             setTextColor(Color.DKGRAY)
         }
+
+        val value = TextView(context).apply {
+            textSize = 16f
+            setTextColor(Color.BLACK)
+            setPadding(0, 4, 0, 0)
+        }
+
         layout.addView(label)
         layout.addView(value)
         return layout
     }
-
     private fun setText(row: LinearLayout, text: String, bold: Boolean = false) {
         val label = row.getChildAt(0) as TextView
         val value = row.getChildAt(1) as TextView
         val parts = text.split(":", limit = 2)
-        label.text = parts.getOrNull(0)?.trim()?.plus(": ") ?: ""
+        label.text = parts.getOrNull(0)?.trim() ?: ""
         value.text = parts.getOrNull(1)?.trim() ?: ""
         if (bold) {
             label.setTextColor(Color.BLACK)
-            value.setTextColor(Color.BLACK)
+            label.setTypeface(null, android.graphics.Typeface.BOLD)
+            value.setTypeface(null, android.graphics.Typeface.BOLD)
         }
     }
-
     override fun onOpen(item: Any?) {
         if (!userTappedToOpen){
             close()

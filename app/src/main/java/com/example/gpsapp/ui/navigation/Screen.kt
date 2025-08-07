@@ -2,6 +2,7 @@ package com.example.gpsapp.ui.navigation
 
 sealed class Screen(val route: String) {
     object Login : Screen("login")
+    object ForgotPassword : Screen("forgot_password")
 
 
     //Dashboard objects

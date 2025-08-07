@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
 
-    private const val BASE_URL = "http://43.205.58.131:8182/"
+    private const val BASE_URL = "http://43.205.58.131:8183/"
 
     private val loggingInterceptor = HttpLoggingInterceptor { message ->
         Timber.tag("HTTP").d(message)
