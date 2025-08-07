@@ -1,0 +1,35 @@
+apply plugin: 'com.android.library'
+
+android {
+    namespace 'org.osmdroid.bonuspack'
+    compileSdkVersion 35
+
+    defaultConfig {
+        minSdkVersion 16
+        targetSdkVersion 34
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    lintOptions {
+        disable 'MissingTranslation'
+    }
+}
+
+dependencies {
+    api 'org.osmdroid:osmdroid-android:6.1.16'
+    implementation 'org.apache.commons:commons-lang3:3.14.0'
+    api 'com.google.code.gson:gson:2.11.0'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'androidx.core:core:1.16.0'
+}

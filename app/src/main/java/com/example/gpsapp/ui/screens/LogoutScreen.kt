@@ -1,17 +1,27 @@
 package com.example.gpsapp.ui.screens
 
 import androidx.compose.foundation.layout.padding
-import androidx.compose.runtime.*
-import androidx.navigation.NavController
-import androidx.compose.material3.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.navigation.NavController
 import com.example.gpsapp.ui.components.ScaffoldWithDrawer
 
 @Composable
 fun LogoutScreen(navController: NavController) {
     var showDialog by remember { mutableStateOf(true) }
 
-    ScaffoldWithDrawer(navController = navController, screenTitle = "Logout") { innerPadding ->
+    ScaffoldWithDrawer(
+        navController = navController,
+        screenTitle = "Logout",
+        role = "superadmin"
+    ) { innerPadding ->
         if (showDialog) {
             AlertDialog(
                 onDismissRequest = {

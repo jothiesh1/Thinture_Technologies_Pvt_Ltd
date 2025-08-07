@@ -7,10 +7,10 @@
       </SelectionState>
       <SelectionState runConfigName="Thinture_GPS.app">
         <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2025-06-09T09:44:22.189720700Z">
+        <DropdownSelection timestamp="2025-07-17T11:03:11.245207200Z">
           <Target type="DEFAULT_BOOT">
             <handle>
-              <DeviceId pluginId="PhysicalDevice" identifier="serial=JRRC7XQKLZPRXCV8" />
+              <DeviceId pluginId="PhysicalDevice" identifier="serial=S8Q8CAGY99999999" />
             </handle>
           </Target>
         </DropdownSelection>

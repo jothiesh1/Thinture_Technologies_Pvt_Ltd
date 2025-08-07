@@ -2,58 +2,156 @@ package com.example.gpsapp.ui.components
 
 import android.content.Context
 import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
-import android.view.View
+import android.view.Gravity
+import android.view.animation.AlphaAnimation
+import android.view.animation.Animation
+import android.view.animation.ScaleAnimation
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
+import androidx.navigation.NavController
+import com.example.gpsapp.data.model.LiveVehicle
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.infowindow.InfoWindow
 
-class CustomInfoWindowWithoutXML(context: Context, mapView: MapView) :
-    InfoWindow(View(context), mapView) {
+class CustomInfoWindowWithoutXML(
+    private val context: Context,
+    mapView: MapView,
+    private val navController: NavController
+) : InfoWindow(LinearLayout(context), mapView) {
 
-    private val latText = TextView(context).apply { setTextColor(Color.BLACK); textSize = 16f }
-    private val lonText = TextView(context).apply { setTextColor(Color.BLACK); textSize = 16f }
-    private val speedText = TextView(context).apply { setTextColor(Color.BLACK); textSize = 16f }
-    private val dateText = TextView(context).apply { setTextColor(Color.BLACK); textSize = 16f }
-    private val timeText = TextView(context).apply { setTextColor(Color.BLACK); textSize = 16f }
+    private val scrollView: ScrollView = ScrollView(context)
+    private val container: LinearLayout = LinearLayout(context)
+    private val deviceIdRow = createRow()
+    private val statusRow = createRow()
+    private val speedRow = createRow()
+    private val addressRow = createRow()
+    private val timestampRow = createRow()
+    private val gsmRow = createRow()
+    private val ignitionRow = createRow()
+    val lastReceivedText = TextView(context).apply {
+        textSize = 10f
+        setTextColor(Color.GRAY)
+        gravity = Gravity.END
+    }
+
+    var userTappedToOpen = false
+    private var lastMarkerPosition: org.osmdroid.util.GeoPoint? = null
+    private var lastVehicleSnapshot: LiveVehicle? = null
+    private var mSelectedMarker: Marker? = null
 
     init {
+        scrollView.setBackgroundColor(Color.WHITE)
+        scrollView.setBackgroundResource(android.R.drawable.dialog_holo_light_frame)
+        scrollView.setPadding(16, 16, 16, 16)
+        scrollView.elevation = 8f
+
+
+        container.orientation = LinearLayout.VERTICAL
+        container.setPadding(16, 16, 16, 16)
+
+        listOf(deviceIdRow, statusRow, speedRow, addressRow, timestampRow, gsmRow, ignitionRow).forEach {
+            container.addView(it)
+        }
+
+        container.addView(lastReceivedText)
+        scrollView.addView(container)
+        mView = scrollView
+    }
+
+    private fun createRow(): LinearLayout {
         val layout = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(24, 20, 24, 20)
-            background = GradientDrawable().apply {
-                cornerRadius = 24f
-                setColor(Color.WHITE)
-                setStroke(2, Color.DKGRAY)
-            }
-            addView(latText)
-            addView(lonText)
-            addView(speedText)
-            addView(dateText)
-            addView(timeText)
+            setPadding(0, 12, 0, 12)
         }
-        mView = layout
-    }
 
+        val label = TextView(context).apply {
+            textSize = 13f
+            setTextColor(Color.DKGRAY)
+        }
+
+        val value = TextView(context).apply {
+            textSize = 16f
+            setTextColor(Color.BLACK)
+            setPadding(0, 4, 0, 0)
+        }
+
+        layout.addView(label)
+        layout.addView(value)
+        return layout
+    }
+    private fun setText(row: LinearLayout, text: String, bold: Boolean = false) {
+        val label = row.getChildAt(0) as TextView
+        val value = row.getChildAt(1) as TextView
+        val parts = text.split(":", limit = 2)
+        label.text = parts.getOrNull(0)?.trim() ?: ""
+        value.text = parts.getOrNull(1)?.trim() ?: ""
+        if (bold) {
+            label.setTextColor(Color.BLACK)
+            label.setTypeface(null, android.graphics.Typeface.BOLD)
+            value.setTypeface(null, android.graphics.Typeface.BOLD)
+        }
+    }
     override fun onOpen(item: Any?) {
-        val marker = item as? Marker ?: return
-        val point = marker.position
-        val speed = marker.snippet?.lines()?.getOrNull(2)?.substringAfter(":")?.trim() ?: ""
-        val timestamp = marker.snippet?.lines()?.getOrNull(3)?.substringAfter(":")?.trim() ?: ""
-        val (date, time) = timestamp.split("T").let {
-            val d = it.getOrNull(0) ?: ""
-            val t = it.getOrNull(1)?.removeSuffix("Z") ?: ""
-            d to t
+        if (!userTappedToOpen){
+            close()
+            return
         }
 
-        latText.text = "Latitude: %.6f".format(point.latitude)
-        lonText.text = "Longitude: %.6f".format(point.longitude)
-        speedText.text = "Speed: $speed"
-        dateText.text = "Date: $date"
-        timeText.text = "Time: $time"
+        val marker = item as? Marker ?: return
+        mSelectedMarker = marker
+        lastMarkerPosition = marker.position
+
+        val vehicle = marker.relatedObject as? LiveVehicle
+
+        lastReceivedText.text = "● Last Received: ${vehicle?.timestamp ?: "--"}"
+        setText(deviceIdRow, "Vehicle No: ${vehicle?.deviceId ?: "--"}", bold = true)
+        setText(statusRow, "Status: ${vehicle?.liveStatus ?: "--"}")
+        setText(speedRow, "Speed: ${vehicle?.speed ?: "--"} km/h")
+        setText(addressRow, "Address: ${marker.snippet?.lines()?.getOrNull(4)?.substringAfter(":")?.trim() ?: "--"}")
+        setText(timestampRow, "Time: ${vehicle?.timestamp ?: "--"}")
+        setText(gsmRow, "GSM: No Signal (0)")
+
+        val ignitionText = if ((vehicle?.ignition ?: "").equals("IGON", true)) "ON" else "OFF"
+        val ignitionView = ignitionRow.getChildAt(1) as TextView
+        ignitionView.text = "Ignition: $ignitionText"
+        ignitionView.setTextColor(if (ignitionText == "OFF") Color.RED else Color.parseColor("#4CAF50"))
+
+        container.startAnimation(
+            ScaleAnimation(
+                0.8f, 1f, 0.8f, 1f,
+                Animation.RELATIVE_TO_SELF, 0.5f,
+                Animation.RELATIVE_TO_SELF, 0.5f
+            ).apply {
+                duration = 200
+                fillAfter = true
+            }
+        )
+
+        lastVehicleSnapshot = vehicle?.copy()
     }
 
-    override fun onClose() {}
+    override fun onClose() {
+        userTappedToOpen = false
+        mSelectedMarker = null
+        lastMarkerPosition = null
+        lastVehicleSnapshot = null
+
+        container.startAnimation(
+            AlphaAnimation(1f, 0f).apply {
+                duration = 200
+                fillAfter = true
+            }
+        )
+    }
+
+    fun refresh(marker: Marker) {
+        if (marker == mSelectedMarker && lastMarkerPosition == marker.position) {
+            val newVehicle = marker.relatedObject as? LiveVehicle
+            if (newVehicle != null && newVehicle != lastVehicleSnapshot) {
+                onOpen(marker)
+            }
+        }
+    }
 }

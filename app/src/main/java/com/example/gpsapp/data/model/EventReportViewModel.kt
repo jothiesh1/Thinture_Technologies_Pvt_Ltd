@@ -94,7 +94,7 @@ class EventReportViewModel : ViewModel() {
             fetchEventReports(
                 fromDate = lastFetchParams.fromDate,
                 toDate = lastFetchParams.toDate,
-                vehicleNumber = lastFetchParams.vehicleNumber,
+                vehicleNumber = lastFetchParams.vehicleNumber ?: "--",
                 status = lastFetchParams.status,
                 reset = false
             )
