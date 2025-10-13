@@ -48,13 +48,33 @@ class PlaybackMapViewModel : ViewModel() {
         val interpolated = mutableListOf<PlaybackPointDto>()
         val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
 
+        // helper to safely parse lat/lon
+        fun String?.toDoubleSafe(): Double? {
+            if (this.isNullOrBlank()) return null
+            val cleaned = this.trim()
+                .replace(",", "")
+                .replace("°", "")
+                .replace(Regex("[^0-9+\\-\\.eE]"), "")
+            return cleaned.toDoubleOrNull()
+        }
+
         for (i in 0 until points.size - 1) {
             val p1 = points[i]
             val p2 = points[i + 1]
 
+            val lat1 = p1.latitude.toDoubleSafe()
+            val lon1 = p1.longitude.toDoubleSafe()
+            val lat2 = p2.latitude.toDoubleSafe()
+            val lon2 = p2.longitude.toDoubleSafe()
+
+            if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) {
+                interpolated.add(p1)
+                continue
+            }
+
             interpolated.add(p1)
 
-            val distance = haversine(p1.latitude, p1.longitude, p2.latitude, p2.longitude)
+            val distance = haversine(lat1, lon1, lat2, lon2)
             val steps = (distance / spacingMeters).toInt()
 
             if (steps > 1) {
@@ -64,16 +84,16 @@ class PlaybackMapViewModel : ViewModel() {
 
                 for (j in 1 until steps) {
                     val fraction = j.toDouble() / steps
-                    val lat = p1.latitude + (p2.latitude - p1.latitude) * fraction
-                    val lon = p1.longitude + (p2.longitude - p1.longitude) * fraction
+                    val lat = lat1 + (lat2 - lat1) * fraction
+                    val lon = lon1 + (lon2 - lon1) * fraction
                     val speed = p1.speed + (p2.speed - p1.speed) * fraction
                     val time = Date(time1 + deltaTime * j)
                     val timeStr = sdf.format(time)
 
                     interpolated.add(
                         p1.copy(
-                            latitude = lat,
-                            longitude = lon,
+                            latitude = lat.toString(),
+                            longitude = lon.toString(),
                             speed = speed,
                             timestamp = timeStr
                         )

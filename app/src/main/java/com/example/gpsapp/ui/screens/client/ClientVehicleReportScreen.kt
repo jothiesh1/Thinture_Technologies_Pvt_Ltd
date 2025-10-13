@@ -51,7 +51,9 @@ import androidx.navigation.NavController
 import com.example.gpsapp.R
 import com.example.gpsapp.network.RetrofitClient
 import com.example.gpsapp.ui.components.ScaffoldWithDrawer
+import com.example.gpsapp.ui.screens.superadmin.VehicleReportItem
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
@@ -59,7 +61,6 @@ import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
-
 
 data class VehicleReportItem(
     val deviceId: String,
@@ -78,7 +79,7 @@ fun ClientVehicleReportScreen(navController: NavController) {
     ScaffoldWithDrawer(
         navController = navController,
         screenTitle = "Vehicle Report",
-        role = "client"
+        role = "superadmin"
     ) { innerPadding ->
         val context = LocalContext.current
         val coroutineScope = rememberCoroutineScope()
@@ -97,6 +98,12 @@ fun ClientVehicleReportScreen(navController: NavController) {
         var selectedItem by remember { mutableStateOf<VehicleReportItem?>(null) }
         var isLoading by remember { mutableStateOf(true) }
 
+        var page by remember { mutableStateOf(1) }
+        val pageLimit = 100
+        var isLoadingMore by remember { mutableStateOf(false) }
+        var hasMoreData by remember { mutableStateOf(true) }
+
+
         val vehicleList = remember { mutableStateListOf<VehicleReportItem>() }
         val filteredList = remember { mutableStateListOf<VehicleReportItem>() }
 
@@ -108,8 +115,10 @@ fun ClientVehicleReportScreen(navController: NavController) {
 
 
         val violationOptions = listOf(
-            "Overspeeding", "Sharp Turning", "Harsh Acceleration",
-            "Harsh Braking", "Theft/Towing"
+            "All Violations",
+            "Overspeed",
+            "Harsh Braking",
+            "Harsh Acceleration"
         )
 
         val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
@@ -137,40 +146,90 @@ fun ClientVehicleReportScreen(navController: NavController) {
                 now.get(Calendar.DAY_OF_MONTH)
             ).show()
         }
-
-        LaunchedEffect(Unit) {
-            isLoading = true
-            try {
-                val resp = RetrofitClient.apiService.getVehicleViolations()
-                if (resp.isSuccessful) {
-                    val list = resp.body().orEmpty()
+        fun fetchVehicleReports(reset: Boolean = false) {
+            coroutineScope.launch {
+                if (reset) {
+                    isLoading = true
+                    page = 1
+                    hasMoreData = true
                     vehicleList.clear()
                     filteredList.clear()
+                } else {
+                    isLoadingMore = true
+                }
 
-                    list.forEach { item ->
-                        val violationType = item.additionalData ?: "No Violations"
-                        vehicleList.add(
-                            VehicleReportItem(
-                                deviceId = item.deviceId ?: "N/A",
-                                vehicle = item.vehicleNumber ?: "N/A",
-                                violationType = violationType,
-                                latitude = item.latitude.toDoubleOrNull() ?: 0.0,
-                                longitude = item.longitude.toDoubleOrNull() ?: 0.0,
-                                speed = item.speed.toFloatOrNull() ?: 0f,
-                                time = item.timestamp ?: "N/A",
-                                driverName = "N/A"
-                            )
-                        )
+                try {
+                    val apiFmt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
+                    val pickerFmt = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+
+                    val now = Calendar.getInstance()
+                    val past48Hours = Calendar.getInstance().apply { add(Calendar.HOUR_OF_DAY, -48) }
+
+                    fun toApi(ts: String): String {
+                        return if (ts == "Select From Date & Time" || ts == "Select To Date & Time") {
+                            apiFmt.format(now.time)
+                        } else {
+                            apiFmt.format(pickerFmt.parse(ts)!!)
+                        }
                     }
 
-                    filteredList.addAll(vehicleList)
-                } else {
-                    Toast.makeText(context, "API error ${resp.code()}", Toast.LENGTH_SHORT).show()
+                    val fromDate = if (fromDateTime == "Select From Date & Time") {
+                        apiFmt.format(past48Hours.time)
+                    } else {
+                        toApi(fromDateTime)
+                    }
+
+                    val toDate = if (toDateTime == "Select To Date & Time") {
+                        apiFmt.format(now.time)
+                    } else {
+                        toApi(toDateTime)
+                    }
+
+                    val resp = RetrofitClient.apiService.getViolationReports(
+                        fromDate = fromDate,
+                        toDate = toDate,
+                        deviceId = if (deviceId.isNotEmpty()) deviceId else null,
+                        violationType = if (selectedViolation != "All Violations" && selectedViolation != "Select Violation") selectedViolation else null,
+                        page = page,
+                        limit = pageLimit
+                    )
+
+                    if (resp.isSuccessful) {
+                        val list = resp.body().orEmpty()
+
+                        if (list.isEmpty()) {
+                            hasMoreData = false
+                        } else {
+                            list.forEach { item ->
+                                vehicleList.add(
+                                    VehicleReportItem(
+                                        deviceId = item.deviceId,
+                                        vehicle = item.vehicleNumber,
+                                        violationType = item.additionalData ?: "No Violations",
+                                        latitude = item.latitude.toDoubleOrNull() ?: 0.0,
+                                        longitude = item.longitude.toDoubleOrNull() ?: 0.0,
+                                        speed = item.speed.toFloatOrNull() ?: 0f,
+                                        time = item.timestamp,
+                                        driverName = item.ownerName
+                                    )
+                                )
+                            }
+                            if (list.size < pageLimit) hasMoreData = false
+                            page++
+                            filteredList.clear()
+                            filteredList.addAll(vehicleList)
+                        }
+                    } else {
+                        Toast.makeText(context, "API Error: ${resp.code()}", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: java.net.SocketTimeoutException) {
+                    Toast.makeText(context, "Request timed out. Please try a smaller date range.", Toast.LENGTH_LONG).show()
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                } finally {
+                    isLoading = false
+                    isLoadingMore = false
                 }
-            } catch (e: Exception) {
-                Toast.makeText(context, "Failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
-            } finally {
-                isLoading = false
             }
         }
 
@@ -206,6 +265,68 @@ fun ClientVehicleReportScreen(navController: NavController) {
                 ) {
                     Button(onClick = { showFilterDialog = true }) {
                         Text("Filter")
+                    }
+                    if (showFilterDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showFilterDialog = false },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    showFilterDialog = false
+                                    fetchVehicleReports(reset = true) // ⬅️ Fetch data only when filters applied
+                                }) {
+                                    Text("Apply")
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showFilterDialog = false }) {
+                                    Text("Cancel")
+                                }
+                            },
+                            title = { Text("Filter Reports") },
+                            text = {
+                                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+
+                                    // From Date & Time Picker
+                                    Button(onClick = { showDateTimePicker { fromDateTime = it } }) {
+                                        Text(fromDateTime)
+                                    }
+
+                                    // To Date & Time Picker
+                                    Button(onClick = { showDateTimePicker { toDateTime = it } }) {
+                                        Text(toDateTime)
+                                    }
+
+                                    // Device ID Input
+                                    androidx.compose.material3.OutlinedTextField(
+                                        value = deviceId,
+                                        onValueChange = { deviceId = it },
+                                        label = { Text("Device ID (Optional)") },
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+
+                                    // Violation Type Dropdown
+                                    Box {
+                                        Button(onClick = { violationExpanded = !violationExpanded }) {
+                                            Text(selectedViolation)
+                                        }
+                                        androidx.compose.material3.DropdownMenu(
+                                            expanded = violationExpanded,
+                                            onDismissRequest = { violationExpanded = false }
+                                        ) {
+                                            violationOptions.forEach { option ->
+                                                androidx.compose.material3.DropdownMenuItem(
+                                                    text = { Text(option) },
+                                                    onClick = {
+                                                        selectedViolation = option
+                                                        violationExpanded = false
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        )
                     }
                     Button(onClick = { showDownloadDialog = true }) {
                         Text("Download Report")
@@ -287,6 +408,36 @@ fun ClientVehicleReportScreen(navController: NavController) {
                             }
                             Divider(color = Color.Gray)
                         }
+
+                        if (fromDateTime != "Select From Date & Time" && toDateTime != "Select To Date & Time") {
+                            if (hasMoreData && !isLoadingMore) {
+                                item {
+                                    Button(
+                                        onClick = { fetchVehicleReports() },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(8.dp)
+                                    ) {
+                                        Text("Load More")
+                                    }
+                                }
+                            }
+                        }
+
+// ✅ Show loader when loading more
+                        if (isLoadingMore) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(color = Color.White)
+                                }
+                            }
+                        }
+
                     }
                 }
             }

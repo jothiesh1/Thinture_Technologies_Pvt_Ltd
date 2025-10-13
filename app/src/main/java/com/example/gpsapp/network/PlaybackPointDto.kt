@@ -7,8 +7,8 @@ data class PlaybackPointDto(
     val client: Any?,
     val user: Any?,
     val timestamp: String,
-    val latitude: Double,
-    val longitude: Double,
+    val latitude: String,
+    val longitude: String,
     val speed: Double,
     val course: String?,        // String in your JSON, so make it nullable
     val additionalData: String?,

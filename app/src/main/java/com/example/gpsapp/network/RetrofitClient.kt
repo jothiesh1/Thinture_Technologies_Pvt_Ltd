@@ -14,12 +14,13 @@ object RetrofitClient {
     private val loggingInterceptor = HttpLoggingInterceptor { message ->
         Timber.tag("HTTP").d(message)
     }.apply {
-        level = HttpLoggingInterceptor.Level.NONE
+        level = HttpLoggingInterceptor.Level.BODY // Enable logging to debug API response times
     }
 
     private val okHttpClient = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
+        .connectTimeout(60, TimeUnit.SECONDS)   // ⬅️ Increased timeout
+        .readTimeout(60, TimeUnit.SECONDS)      // ⬅️ Increased timeout
+        .writeTimeout(60, TimeUnit.SECONDS)     // ⬅️ Added for safety
         .addInterceptor(loggingInterceptor)
         .build()
 

@@ -1,6 +1,6 @@
 package com.example.gpsapp.data.model
 
-data class ViolationReportResponse(
+data class VehicleViolationResponse(
     val deviceId: String,
     val vehicleNumber: String,
     val vehicleType: String,
@@ -12,8 +12,4 @@ data class ViolationReportResponse(
     val longitude: String,
     val speed: String,
     val status: String
-)
-
-data class AdditionalData(
-    val violationType: String?
 )

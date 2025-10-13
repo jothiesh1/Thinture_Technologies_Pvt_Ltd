@@ -214,8 +214,8 @@ fun ClientEventReportScreen(navController: NavController) {
                         }
 
                         items(reportList) { item ->
-                            val lat = item.latitude?.toString()?.takeIf { it.length >= 6 }?.substring(0, 6) ?: "-"
-                            val lon = item.longitude?.toString()?.takeIf { it.length >= 6 }?.substring(0, 6) ?: "-"
+                            val lat = item.latitude?.let { if (it.length >= 6) it.substring(0, 6) else it } ?: "-"
+                            val lon = item.longitude?.let { if (it.length >= 6) it.substring(0, 6) else it } ?: "-"
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()

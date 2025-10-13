@@ -31,7 +31,7 @@ fun ScaffoldWithDrawer(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = !disableGestures,
+        gesturesEnabled = false,
         drawerContent = {
             AppDrawer(navController, onCloseDrawer = {
                 coroutineScope.launch { drawerState.close() }

@@ -84,7 +84,12 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
-fun getAddressFromLocation(context: Context, lat: Double, lon: Double): String {
+/** Accept string coords, parse safely and return address or "Unknown" */
+fun getAddressFromLocation(context: Context, latStr: String?, lonStr: String?): String {
+    val lat = latStr?.extractFirstDouble()
+    val lon = lonStr?.extractFirstDouble()
+    if (lat == null || lon == null) return "Unknown"
+
     return try {
         val geocoder = Geocoder(context, Locale.getDefault())
         geocoder.getFromLocation(lat, lon, 1)?.firstOrNull()?.getAddressLine(0) ?: "Unknown"
@@ -92,6 +97,28 @@ fun getAddressFromLocation(context: Context, lat: Double, lon: Double): String {
         "Unknown"
     }
 }
+
+// ----------------------- Coordinate parsing helpers -----------------------
+/** Extracts the first decimal number from a string (handles "12.345", "12.345N", "12,345"). */
+fun String.extractFirstDouble(): Double? {
+    val s = this.trim().replace(",", ".")                       // normalize comma -> dot
+    val match = Regex("""-?\d+(\.\d+)?""").find(s)              // match first float-like token
+    return match?.value?.toDoubleOrNull()
+}
+
+/** Safely convert a pair of string coords into a GeoPoint, or null if invalid. */
+fun LiveVehicle.toGeoPointOrNull(): GeoPoint? {
+    val lat = this.latitude?.extractFirstDouble()
+    val lon = this.longitude?.extractFirstDouble()
+    return if (lat != null && lon != null) GeoPoint(lat, lon) else null
+}
+
+/** For UI display: show parsed number with 6 decimals if possible, otherwise return raw string. */
+fun String?.formatCoordinateForDisplay(): String {
+    val d = this?.extractFirstDouble()
+    return d?.let { String.format(Locale.getDefault(), "%.6f", it) } ?: (this ?: "--")
+}
+
 
 fun calculateBearing(from: GeoPoint, to: GeoPoint): Float {
     val lat1 = Math.toRadians(from.latitude)
@@ -155,10 +182,17 @@ fun ClientLiveMapScreen(navController: NavController, role: String) {
                 liveVehicles.addAll(list)
 
                 list.forEach { vehicle ->
-                    val geoPoint = GeoPoint(vehicle.latitude, vehicle.longitude)
+                    // parse / validate coordinates
+                    val geoPoint = vehicle.toGeoPointOrNull()
                     val address = getAddressFromLocation(context, vehicle.latitude, vehicle.longitude)
                     val marker = vehicleMarkers[vehicle.deviceId]
                     val previous = marker?.position
+
+                    if (geoPoint == null) {
+                        // invalid coords — skip creating/updating marker for this vehicle
+                        android.util.Log.w("LiveMapScreen", "Invalid coords for device=${vehicle.deviceId}, lat='${vehicle.latitude}', lon='${vehicle.longitude}'")
+                        return@forEach
+                    }
 
                     if (marker == null) {
                         val newMarker = Marker(mapView).apply {
@@ -181,12 +215,12 @@ fun ClientLiveMapScreen(navController: NavController, role: String) {
                             }
                             title = vehicle.deviceId
                             snippet = """
-                                Vehicle: ${vehicle.deviceId}
-                                Status: ${vehicle.liveStatus}
-                                Speed: ${vehicle.speed} km/h
-                                Time: ${vehicle.timestamp}
-                                Addr: $address
-                            """.trimIndent()
+                Vehicle: ${vehicle.deviceId}
+                Status: ${vehicle.liveStatus}
+                Speed: ${vehicle.speed} km/h
+                Time: ${vehicle.timestamp}
+                Addr: $address
+            """.trimIndent()
                             relatedObject = vehicle
 
                             setOnMarkerClickListener { m, _ ->
@@ -208,7 +242,6 @@ fun ClientLiveMapScreen(navController: NavController, role: String) {
                         marker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
                         mapView.invalidate()
 
-
                         val oldStatus = (marker.relatedObject as? LiveVehicle)?.liveStatus
                         val statusChanged = oldStatus != vehicle.liveStatus
 
@@ -216,9 +249,7 @@ fun ClientLiveMapScreen(navController: NavController, role: String) {
                             val bearing = previous?.let { calculateBearing(it, geoPoint) } ?: (vehicle.course ?: 0f)
                             val rotatedIcon = getRotatedBitmapDrawableLive(context, bearing)
                             marker.icon = rotatedIcon
-                        }
-
-                        else if (statusChanged) {
+                        } else if (statusChanged) {
                             marker.icon = BitmapDrawable(
                                 context.resources,
                                 BitmapFactory.decodeResource(
@@ -235,11 +266,11 @@ fun ClientLiveMapScreen(navController: NavController, role: String) {
                         marker.relatedObject = vehicle
 
                         marker.snippet = """
-    Vehicle: ${vehicle.deviceId}
-    Status: ${vehicle.liveStatus}
-    Speed: ${vehicle.speed} km/h
-    Time: ${vehicle.timestamp}
-    Addr: $address
+Vehicle: ${vehicle.deviceId}
+Status: ${vehicle.liveStatus}
+Speed: ${vehicle.speed} km/h
+Time: ${vehicle.timestamp}
+Addr: $address
 """.trimIndent()
                     }
                 }
@@ -332,7 +363,7 @@ fun ClientLiveMapScreen(navController: NavController, role: String) {
                     Spacer(modifier = Modifier.height(8.dp))
 
                     val filtered = liveVehicles.filter {
-                        it.deviceId.contains(searchQuery.text, ignoreCase = true)
+                        it.deviceId?.contains(searchQuery.text, ignoreCase = true) == true
                     }
 
                     SummaryGroup(filtered)
@@ -356,6 +387,7 @@ fun ClientLiveMapScreen(navController: NavController, role: String) {
                             VehicleRow(
                                 vehicle = v,
                                 mapView = mapView,
+                                context = context,
                                 onLocate = { isSidebarVisible = false }
                             )
                         }
@@ -399,6 +431,7 @@ private fun SummaryRow(label: String, count: Int, isBold: Boolean = false) {
 private fun VehicleRow(
     vehicle: LiveVehicle,
     mapView: MapView,
+    context: Context,
     onLocate: () -> Unit
 ) {
     Row(
@@ -412,9 +445,14 @@ private fun VehicleRow(
         Text(vehicle.timestamp?.takeLast(8) ?: "--:--:--", Modifier.weight(1f))
         IconButton(
             onClick = {
-                mapView.controller.setZoom(18.0)
-                mapView.controller.setCenter(GeoPoint(vehicle.latitude, vehicle.longitude))
-                onLocate()
+                val gp = vehicle.toGeoPointOrNull()
+                if (gp != null) {
+                    mapView.controller.setZoom(18.0)
+                    mapView.controller.setCenter(gp)
+                    onLocate()
+                } else {
+                    Toast.makeText(context, "Invalid coordinates for ${vehicle.deviceId}", Toast.LENGTH_SHORT).show()
+                }
             },
             modifier = Modifier.weight(0.5f)
         ) {
@@ -472,8 +510,8 @@ fun VehiclePopupDialog(vehicle: LiveVehicle, navController: NavController, onDis
 
                 InfoRow(Icons.Default.DirectionsCar, "Vehicle No", vehicle.deviceId)
                 InfoRow(Icons.Default.AccessTime, "Time Interval", "002,010,010")
-                InfoRow(Icons.Default.LocationOn, "Latitude", vehicle.latitude.toString())
-                InfoRow(Icons.Default.LocationOn, "Longitude", vehicle.longitude.toString())
+                InfoRow(Icons.Default.LocationOn, "Latitude", vehicle.latitude.formatCoordinateForDisplay())
+                InfoRow(Icons.Default.LocationOn, "Longitude", vehicle.longitude.formatCoordinateForDisplay())
                 InfoRow(Icons.Default.Speed, "Speed", "${vehicle.speed} km/h")
                 InfoRow(
                     Icons.Default.Power,

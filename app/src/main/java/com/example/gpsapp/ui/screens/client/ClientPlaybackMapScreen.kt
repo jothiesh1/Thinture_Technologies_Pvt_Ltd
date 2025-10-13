@@ -135,6 +135,15 @@ fun ClientPlaybackMapScreen(navController: NavController, deviceId: String){
             if (points.isNotEmpty()) res.add(points.last())
             return res
         }
+        // helper to safely parse backend lat/lon strings to Double
+        fun String?.toDoubleSafe(): Double? {
+            if (this.isNullOrBlank()) return null
+            val cleaned = this.trim()
+                .replace(",", "")
+                .replace("°", "")
+                .replace(Regex("[^0-9+\\-\\.eE]"), "")
+            return cleaned.toDoubleOrNull()
+        }
 
         LaunchedEffect(isPlaying, playbackIndex, playbackSpeed, interpolatedPoints) {
             if (isPlaying && playbackIndex < interpolatedPoints.lastIndex) {
@@ -174,12 +183,28 @@ fun ClientPlaybackMapScreen(navController: NavController, deviceId: String){
 
         LaunchedEffect(allRawPoints) {
             if (allRawPoints.isNotEmpty()) {
-                interpolatedPoints = interpolatePoints(
-                    allRawPoints.map { GeoPoint(it.latitude, it.longitude) }
-                )
+                val pts = allRawPoints.mapNotNull { p ->
+                    val lat = p.latitude.toDoubleSafe()
+                    val lon = p.longitude.toDoubleSafe()
+                    if (lat == null || lon == null) null else GeoPoint(lat, lon)
+                }
+                if (pts.isNotEmpty()) {
+                    // ViewModel already returns interpolated PlaybackPointDto list.
+                    // Here we just convert them to GeoPoint for drawing/animation.
+                    interpolatedPoints = pts
+                    playbackIndex = 0
+                    shouldLoadMap = true
+                } else {
+                    interpolatedPoints = emptyList()
+                    playbackIndex = 0
+                    Toast.makeText(context, "No valid GPS points to plot.", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                interpolatedPoints = emptyList()
                 playbackIndex = 0
             }
         }
+
 
         LaunchedEffect(errorMessage) {
             errorMessage?.let { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }

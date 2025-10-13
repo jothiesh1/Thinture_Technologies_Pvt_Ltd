@@ -18,6 +18,16 @@ class EventReportViewModel : ViewModel() {
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage = _errorMessage.asStateFlow()
 
+    // Device list states
+    private val _deviceList = MutableStateFlow<List<String>>(emptyList())
+    val deviceList = _deviceList.asStateFlow()
+
+    private val _isLoadingDevices = MutableStateFlow(false)
+    val isLoadingDevices = _isLoadingDevices.asStateFlow()
+
+    private val _selectedDeviceId = MutableStateFlow<String?>(null)
+    val selectedDeviceId = _selectedDeviceId.asStateFlow()
+
     private var page = 1
     private var hasMoreData = true
     private var lastFetchParams = FetchParams()
@@ -85,6 +95,40 @@ class EventReportViewModel : ViewModel() {
                 _errorMessage.value = e.localizedMessage ?: "Error fetching event report"
             } finally {
                 _isLoading.value = false
+            }
+        }
+    }
+
+    fun fetchDevices() {
+        viewModelScope.launch {
+            _isLoadingDevices.value = true
+            try {
+                val response = RetrofitClient.apiService.getLiveVehicles()
+
+                if (response.isSuccessful) {
+                    val vehicles = response.body()
+                    if (vehicles != null) {
+                        // Extract device IDs from the response
+                        // Adjust the property name based on your actual API response structure
+                        val deviceIds = vehicles.mapNotNull { vehicle ->
+                            vehicle.deviceId ?: vehicle.vehicleNumber
+                        }.filter { it.isNotBlank() }.distinct().sorted()
+
+                        _deviceList.value = deviceIds
+
+                        if (deviceIds.isEmpty()) {
+                            _errorMessage.value = "No devices available"
+                        }
+                    } else {
+                        _errorMessage.value = "Failed to load devices"
+                    }
+                } else {
+                    _errorMessage.value = "Error loading devices: ${response.code()} – ${response.message()}"
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = e.localizedMessage ?: "Error fetching devices"
+            } finally {
+                _isLoadingDevices.value = false
             }
         }
     }

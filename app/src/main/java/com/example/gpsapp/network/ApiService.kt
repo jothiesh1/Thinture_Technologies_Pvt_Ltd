@@ -5,7 +5,7 @@ import com.example.gpsapp.data.model.LiveVehicle
 import com.example.gpsapp.data.model.LoginRequest
 import com.example.gpsapp.data.model.LoginResponse
 import com.example.gpsapp.data.model.VehicleStatusResponse
-import com.example.gpsapp.data.model.ViolationReportResponse
+import com.example.gpsapp.data.model.VehicleViolationResponse
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -20,7 +20,7 @@ interface ApiService {
     suspend fun login(@Body request: LoginRequest): Response<LoginResponse>
 
     // Event report endpoint
-    @GET("api/android/vehicle/history1/{deviceId}")
+    @GET("api/android/vehicle/history/{deviceId}")
     suspend fun getEventReport(
         @Path("deviceId") deviceId: String,
         @Query("from") from: String,
@@ -41,7 +41,14 @@ interface ApiService {
     suspend fun getLiveVehicles(): Response<List<LiveVehicle>>
 
     @GET("api/android/violation/reports")
-    suspend fun getVehicleViolations(): Response<List<ViolationReportResponse>>
+    suspend fun getViolationReports(
+        @Query("fromDate") fromDate: String,
+        @Query("toDate") toDate: String,
+        @Query("deviceId") deviceId: String? = null,
+        @Query("violationType") violationType: String? = null,
+        @Query("page") page: Int? = null,
+        @Query("limit") limit: Int? = null
+    ): Response<List<VehicleViolationResponse>>
 
     @GET("api/mobile/vehicles/status")
     suspend fun getVehicleStatus(): Response<VehicleStatusResponse>
