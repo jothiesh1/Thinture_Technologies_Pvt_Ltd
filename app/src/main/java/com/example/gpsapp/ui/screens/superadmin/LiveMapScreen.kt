@@ -2,13 +2,18 @@
 
 package com.example.gpsapp.ui.screens.superadmin
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.graphics.drawable.BitmapDrawable
 import android.location.Geocoder
+import android.location.Location
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -30,7 +35,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -41,9 +45,7 @@ import androidx.compose.material.Divider
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.CheckBox
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DirectionsCar
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Menu
@@ -53,6 +55,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Power
 import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -71,9 +74,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
@@ -86,46 +87,41 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
+import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import com.example.gpsapp.R
 import com.example.gpsapp.data.model.LiveVehicle
 import com.example.gpsapp.network.RetrofitClient
 import com.example.gpsapp.ui.components.ScaffoldWithDrawer
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import com.google.android.gms.tasks.CancellationTokenSource
 import kotlinx.coroutines.delay
+import okhttp3.Cache
+import okhttp3.OkHttpClient
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
 import java.util.Locale
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
-import com.google.gson.annotations.SerializedName
-
-
-
-
-/** Accept string coords, parse safely and return address or "Unknown" */
-fun getAddressFromLocation(context: Context, latStr: String?, lonStr: String?): String {
-    val lat = latStr?.extractFirstDouble()
-    val lon = lonStr?.extractFirstDouble()
-    if (lat == null || lon == null) return "Unknown"
-
-    return try {
-        val geocoder = Geocoder(context, Locale.getDefault())
-        geocoder.getFromLocation(lat, lon, 1)?.firstOrNull()?.getAddressLine(0) ?: "Unknown"
-    } catch (e: Exception) {
-        "Unknown"
-    }
-}
 
 // ----------------------- Coordinate parsing helpers -----------------------
-/** Extracts the first decimal number from a string (handles "12.345", "12.345N", "12,345"). */
-fun String.extractFirstDouble(): Double? {
-    val s = this.trim().replace(",", ".")                       // normalize comma -> dot
-    val match = Regex("""-?\d+(\.\d+)?""").find(s)              // match first float-like token
+
+/** Extracts the first decimal number from a string (handles "12.345", "12.345N", "12,345", empty strings). */
+fun String?.extractFirstDouble(): Double? {
+    if (this.isNullOrBlank()) return null
+    val s = this.trim()
+    if (s.isEmpty()) return null
+    val normalized = s.replace(",", ".")
+    val match = Regex("""-?\d+(\.\d+)?""").find(normalized)
     return match?.value?.toDoubleOrNull()
 }
 
@@ -133,12 +129,70 @@ fun String.extractFirstDouble(): Double? {
 fun LiveVehicle.toGeoPointOrNull(): GeoPoint? {
     val lat = this.latitude?.extractFirstDouble()
     val lon = this.longitude?.extractFirstDouble()
-    return if (lat != null && lon != null) GeoPoint(lat, lon) else null
+    return if (lat != null && lon != null &&
+        lat >= -90.0 && lat <= 90.0 &&
+        lon >= -180.0 && lon <= 180.0) {
+        GeoPoint(lat, lon)
+    } else {
+        null
+    }
 }
 
 fun String?.formatCoordinateForDisplay(): String {
     val d = this?.extractFirstDouble()
     return d?.let { String.format(Locale.getDefault(), "%.6f", it) } ?: (this ?: "--")
+}
+
+/** Accept string coords, parse safely and return address or appropriate message */
+fun getAddressFromLocation(context: Context, latStr: String?, lonStr: String?): String {
+    if (latStr.isNullOrBlank() || lonStr.isNullOrBlank()) {
+        return "No location data"
+    }
+
+    val lat = latStr.extractFirstDouble()
+    val lon = lonStr.extractFirstDouble()
+
+    if (lat == null || lon == null) {
+        return "Invalid coordinates"
+    }
+
+    return try {
+        val geocoder = Geocoder(context, Locale.getDefault())
+        val addresses = geocoder.getFromLocation(lat, lon, 1)
+        addresses?.firstOrNull()?.getAddressLine(0) ?: "Address not available"
+    } catch (e: Exception) {
+        android.util.Log.e("LiveMapScreen", "Geocoding error for $lat,$lon", e)
+        "Address unavailable"
+    }
+}
+
+// ----------------------- Distance and bearing calculations -----------------------
+
+/** Calculate distance between two GeoPoints in meters */
+fun GeoPoint.distanceTo(other: GeoPoint): Float {
+    val results = FloatArray(1)
+    Location.distanceBetween(
+        this.latitude,
+        this.longitude,
+        other.latitude,
+        other.longitude,
+        results
+    )
+    return results[0]
+}
+
+/** Find the closest vehicle to user location */
+fun findClosestVehicle(
+    userLocation: GeoPoint,
+    vehicles: List<LiveVehicle>
+): Pair<LiveVehicle, Float>? {
+    return vehicles
+        .mapNotNull { vehicle ->
+            vehicle.toGeoPointOrNull()?.let { vehicleLocation ->
+                vehicle to userLocation.distanceTo(vehicleLocation)
+            }
+        }
+        .minByOrNull { it.second }
 }
 
 fun calculateBearing(from: GeoPoint, to: GeoPoint): Float {
@@ -153,8 +207,9 @@ fun calculateBearing(from: GeoPoint, to: GeoPoint): Float {
     return ((bearing + 360) % 360).toFloat()
 }
 
+// ----------------------- Icon helpers -----------------------
+
 fun getCarIcon(context: Context, bearing: Float): BitmapDrawable {
-    // Normalize bearing to closest 22-degree interval
     val normalized = (bearing / 22.5f).roundToInt() * 22
     val assetName = "car_${normalized % 360}.png"
 
@@ -163,7 +218,6 @@ fun getCarIcon(context: Context, bearing: Float): BitmapDrawable {
         val bitmap = BitmapFactory.decodeStream(inputStream)
         BitmapDrawable(context.resources, bitmap)
     } catch (e: Exception) {
-        // Fallback if asset not found
         val fallback = BitmapFactory.decodeResource(context.resources, R.drawable.car_0)
         BitmapDrawable(context.resources, fallback)
     }
@@ -176,6 +230,8 @@ fun getRotatedBitmapDrawableLive(context: Context, angle: Float): BitmapDrawable
     return BitmapDrawable(context.resources, rotated)
 }
 
+// ----------------------- Main Screen -----------------------
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LiveMapScreen(navController: NavController) {
@@ -184,7 +240,15 @@ fun LiveMapScreen(navController: NavController) {
     val screenHeight = configuration.screenHeightDp.dp
     val density = LocalDensity.current
 
-    val mapView = remember { MapView(context) }
+    val mapView = remember {
+        MapView(context).apply {
+            // Pre-configure for faster initial render
+            setTileSource(TileSourceFactory.MAPNIK)
+            setMultiTouchControls(true)
+            isTilesScaledToDpi = true
+            setUseDataConnection(true)
+        }
+    }
     var selectedVehicle by remember { mutableStateOf<LiveVehicle?>(null) }
     val mapInitialized = remember { mutableStateOf(false) }
     val vehicleMarkers = remember { mutableStateMapOf<String, Marker>() }
@@ -192,25 +256,29 @@ fun LiveMapScreen(navController: NavController) {
     var searchQuery by remember { mutableStateOf(TextFieldValue("")) }
     val liveVehicles = remember { mutableStateListOf<LiveVehicle>() }
 
+    // GPS-related states
+    var userLocation by remember { mutableStateOf<GeoPoint?>(null) }
+    var hasZoomedToClosest by remember { mutableStateOf(false) }
+    var locationPermissionGranted by remember { mutableStateOf(false) }
+
+    val fusedLocationClient = remember {
+        LocationServices.getFusedLocationProviderClient(context)
+    }
+
     // Bottom sheet state
     var isBottomSheetVisible by remember { mutableStateOf(false) }
     var dragOffset by remember { mutableStateOf(0f) }
 
-    // Calculate bottom sheet height (60% of screen)
     val bottomSheetHeight = screenHeight * 0.6f
-    val minBottomSheetHeight = 100.dp // Minimum peek height
+    val minBottomSheetHeight = 100.dp
 
-    // Animate bottom sheet position - Fixed positioning logic
     val bottomSheetOffset by animateFloatAsState(
         targetValue = if (isBottomSheetVisible) {
             with(density) {
-                // When visible: position at bottom of screen minus drag offset
-                // 0f means fully visible at bottom, positive values move it down (hidden)
                 dragOffset.coerceIn(0f, (bottomSheetHeight - minBottomSheetHeight).toPx())
             }
         } else {
             with(density) {
-                // When hidden: move it completely off-screen (positive Y moves down)
                 (bottomSheetHeight - minBottomSheetHeight).toPx()
             }
         },
@@ -218,74 +286,142 @@ fun LiveMapScreen(navController: NavController) {
         label = "BottomSheet"
     )
 
-    // Replace your fetchLiveVehicles function with this improved version:
+    // Permission launcher
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineLocationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+        val coarseLocationGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
+
+        locationPermissionGranted = fineLocationGranted || coarseLocationGranted
+
+        if (locationPermissionGranted) {
+            getUserLocation(fusedLocationClient, context) { location ->
+                userLocation = location
+            }
+        } else {
+            Toast.makeText(
+                context,
+                "Location permission denied. Cannot find nearest vehicle.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        val fineLocationPermission = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
+
+        locationPermissionGranted = fineLocationPermission == PackageManager.PERMISSION_GRANTED
+
+        if (locationPermissionGranted) {
+            getUserLocation(fusedLocationClient, context) { location ->
+                userLocation = location
+            }
+        }
+    }
+
+    // Zoom to closest vehicle IMMEDIATELY when data is available
+    LaunchedEffect(userLocation, liveVehicles.size, mapInitialized.value) {
+        if (!hasZoomedToClosest && mapInitialized.value) {
+
+            // First priority: If we have user location AND vehicles, find closest
+            if (userLocation != null && liveVehicles.isNotEmpty()) {
+                val closestPair = findClosestVehicle(userLocation!!, liveVehicles)
+
+                if (closestPair != null) {
+                    val (closestVehicle, distance) = closestPair
+                    val vehicleLocation = closestVehicle.toGeoPointOrNull()
+
+                    if (vehicleLocation != null) {
+                        // Smooth animation to the closest vehicle
+                        mapView.controller.animateTo(vehicleLocation, 15.0, 1000L)
+
+                        // Show toast with information
+                        val distanceKm = distance / 1000
+                        Toast.makeText(
+                            context,
+                            "Nearest: ${closestVehicle.deviceId} (${String.format("%.2f", distanceKm)} km)",
+                            Toast.LENGTH_LONG
+                        ).show()
+
+                        // Auto-select the closest vehicle with slight delay for smooth UX
+                        delay(500)
+                        selectedVehicle = closestVehicle
+                        isBottomSheetVisible = true
+                        dragOffset = 0f
+
+                        hasZoomedToClosest = true
+                        return@LaunchedEffect
+                    }
+                }
+            }
+
+            // Second priority: If vehicles exist but no user location yet, zoom to first vehicle
+            if (liveVehicles.isNotEmpty() && userLocation == null) {
+                val firstVehicleWithLocation = liveVehicles.firstOrNull { it.toGeoPointOrNull() != null }
+                firstVehicleWithLocation?.toGeoPointOrNull()?.let { location ->
+                    mapView.controller.animateTo(location, 12.0, 800L)
+                    Toast.makeText(
+                        context,
+                        "Showing vehicles (location pending...)",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    // Don't set hasZoomedToClosest yet, so we can re-zoom when GPS comes in
+                }
+            }
+        }
+    }
 
     suspend fun fetchLiveVehicles() {
         try {
             val response = RetrofitClient.apiService.getLiveVehicles()
 
-            // Better error handling for response
             if (!response.isSuccessful) {
                 val errorMsg = "API error: ${response.code()} - ${response.message()}"
                 android.util.Log.e("LiveMapScreen", errorMsg)
-                Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
                 return
             }
 
             val vehicleList = response.body()
 
-            // Handle null or empty response body
             if (vehicleList == null) {
                 android.util.Log.w("LiveMapScreen", "Response body is null")
-                Toast.makeText(context, "No data received from server", Toast.LENGTH_SHORT).show()
                 return
             }
 
             if (vehicleList.isEmpty()) {
                 android.util.Log.w("LiveMapScreen", "Response body is empty list")
-                // Clear existing vehicles if list is empty
                 liveVehicles.clear()
                 return
             }
 
-            // Log successful fetch
             android.util.Log.d("LiveMapScreen", "Fetched ${vehicleList.size} vehicles")
 
             liveVehicles.clear()
             liveVehicles.addAll(vehicleList)
 
             vehicleList.forEach { vehicle ->
-                // Skip vehicles without deviceId (they can't be tracked)
                 if (vehicle.deviceId.isNullOrBlank()) {
-                    android.util.Log.w("LiveMapScreen", "Skipping vehicle with null/blank deviceId: $vehicle")
+                    android.util.Log.w("LiveMapScreen", "Skipping vehicle with null/blank deviceId")
                     return@forEach
                 }
 
-                // Parse and validate coordinates with better error handling
                 val geoPoint = vehicle.toGeoPointOrNull()
 
                 if (geoPoint == null) {
-                    // Log but don't show toast for every invalid coordinate
-                    android.util.Log.w(
-                        "LiveMapScreen",
-                        "Invalid coords for device=${vehicle.deviceId}, " +
-                                "lat='${vehicle.latitude}', lon='${vehicle.longitude}'"
-                    )
-
-                    // Remove marker if it exists (vehicle went offline with no coords)
                     vehicleMarkers[vehicle.deviceId]?.let { marker ->
                         mapView.overlays.remove(marker)
                         vehicleMarkers.remove(vehicle.deviceId)
-                        android.util.Log.d("LiveMapScreen", "Removed marker for ${vehicle.deviceId} (no valid coords)")
                     }
                     return@forEach
                 }
 
-                // Get address safely
                 val address = try {
                     getAddressFromLocation(context, vehicle.latitude, vehicle.longitude)
                 } catch (e: Exception) {
-                    android.util.Log.e("LiveMapScreen", "Geocoding error for ${vehicle.deviceId}", e)
                     "Address unavailable"
                 }
 
@@ -293,14 +429,12 @@ fun LiveMapScreen(navController: NavController) {
                 val previous = marker?.position
 
                 if (marker == null) {
-                    // Create new marker
                     val newMarker = Marker(mapView).apply {
                         position = geoPoint
                         setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
                         setInfoWindowAnchor(Marker.ANCHOR_CENTER, -2.5f)
                         isFlat = true
 
-                        // Set icon based on status
                         icon = when {
                             vehicle.liveStatus.equals("RUNNING", true) -> {
                                 getRotatedBitmapDrawableLive(context, 0f)
@@ -366,10 +500,8 @@ fun LiveMapScreen(navController: NavController) {
 
                     vehicleMarkers[vehicle.deviceId] = newMarker
                     mapView.overlays.add(newMarker)
-                    android.util.Log.d("LiveMapScreen", "Created marker for ${vehicle.deviceId}")
 
                 } else {
-                    // Update existing marker
                     val positionChanged = previous != null &&
                             (previous.latitude != geoPoint.latitude ||
                                     previous.longitude != geoPoint.longitude)
@@ -385,7 +517,6 @@ fun LiveMapScreen(navController: NavController) {
                     marker.position = geoPoint
                     marker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
 
-                    // Update icon if status changed
                     val oldStatus = (marker.relatedObject as? LiveVehicle)?.liveStatus
                     val statusChanged = oldStatus != vehicle.liveStatus
 
@@ -422,7 +553,6 @@ fun LiveMapScreen(navController: NavController) {
                     Addr: $address
                 """.trimIndent()
 
-                    // Update selected vehicle data for real-time updates
                     if (selectedVehicle?.deviceId == vehicle.deviceId) {
                         selectedVehicle = vehicle
                     }
@@ -432,110 +562,66 @@ fun LiveMapScreen(navController: NavController) {
             mapView.invalidate()
 
         } catch (e: Exception) {
-            // Comprehensive error logging
-            val errorMsg = when {
-                e.message.isNullOrBlank() -> "Network error: ${e.javaClass.simpleName}"
-                else -> "Fetch failed: ${e.message}"
-            }
-
-            android.util.Log.e("LiveMapScreen", errorMsg, e)
-            Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
-        }
-    }
-
-
-// Also improve the coordinate extraction function:
-
-    /** Extracts the first decimal number from a string (handles "12.345", "12.345N", "12,345", empty strings). */
-    fun String?.extractFirstDouble(): Double? {
-        // Handle null or blank strings
-        if (this.isNullOrBlank()) return null
-
-        val s = this.trim()
-
-        // Handle empty string after trim
-        if (s.isEmpty()) return null
-
-        // Normalize comma to dot
-        val normalized = s.replace(",", ".")
-
-        // Match first float-like token
-        val match = Regex("""-?\d+(\.\d+)?""").find(normalized)
-
-        return match?.value?.toDoubleOrNull()
-    }
-
-
-// Improve the toGeoPointOrNull extension:
-
-    /** Safely convert a pair of string coords into a GeoPoint, or null if invalid. */
-    fun LiveVehicle.toGeoPointOrNull(): GeoPoint? {
-        // Extract coordinates
-        val lat = this.latitude?.extractFirstDouble()
-        val lon = this.longitude?.extractFirstDouble()
-
-        // Validate coordinates are within valid ranges
-        return if (lat != null && lon != null &&
-            lat >= -90.0 && lat <= 90.0 &&
-            lon >= -180.0 && lon <= 180.0) {
-            GeoPoint(lat, lon)
-        } else {
-            null
-        }
-    }
-
-
-// Improve the address function:
-
-    /** Accept string coords, parse safely and return address or "Unknown" */
-    fun getAddressFromLocation(context: Context, latStr: String?, lonStr: String?): String {
-        // Handle null or blank strings
-        if (latStr.isNullOrBlank() || lonStr.isNullOrBlank()) {
-            return "No location data"
-        }
-
-        val lat = latStr.extractFirstDouble()
-        val lon = lonStr.extractFirstDouble()
-
-        if (lat == null || lon == null) {
-            return "Invalid coordinates"
-        }
-
-        return try {
-            val geocoder = Geocoder(context, Locale.getDefault())
-            val addresses = geocoder.getFromLocation(lat, lon, 1)
-            addresses?.firstOrNull()?.getAddressLine(0) ?: "Address not available"
-        } catch (e: Exception) {
-            android.util.Log.e("LiveMapScreen", "Geocoding error for $lat,$lon", e)
-            "Address unavailable"
+            android.util.Log.e("LiveMapScreen", "Fetch failed: ${e.message}", e)
         }
     }
 
     LaunchedEffect(Unit) {
-        Configuration.getInstance().load(context, context.getSharedPreferences("osm_prefs", Context.MODE_PRIVATE))
+        // Configure OSMDroid with optimized settings for faster loading
+        Configuration.getInstance().apply {
+            load(context, context.getSharedPreferences("osm_prefs", Context.MODE_PRIVATE))
+            // Increase tile cache size for better performance
+            tileFileSystemCacheMaxBytes = 100L * 1024L * 1024L // 100MB cache
+            tileFileSystemCacheTrimBytes = 80L * 1024L * 1024L // Trim to 80MB
+            // Set user agent to avoid rate limiting
+            userAgentValue = "GPSApp/1.0"
+            // Enable HTTP caching
+            val cacheSize = 10L * 1024 * 1024 // 10 MB
+            val cache = Cache(context.cacheDir, cacheSize)
+
+            val client = OkHttpClient.Builder()
+                .cache(cache)
+                .addInterceptor { chain ->
+                    val response = chain.proceed(chain.request())
+                    // Set max age to 7 days
+                    response.newBuilder()
+                        .header("Cache-Control", "public, max-age=${7 * 24 * 60 * 60}")
+                        .build()
+                }
+                .build()
+
+            val retrofit = Retrofit.Builder()
+                .baseUrl("http://example.com")
+                .client(client)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build()
+        }
+
         mapView.apply {
             setTileSource(TileSourceFactory.MAPNIK)
             setMultiTouchControls(true)
             setBuiltInZoomControls(true)
+
+            // Performance optimizations
+            isTilesScaledToDpi = true
+            setUseDataConnection(true)
+
+            // Start with a lower zoom to load faster
             controller.setZoom(6.0)
             controller.setCenter(GeoPoint(20.5937, 78.9629))
-        }
 
-        mapView.setOnTouchListener { _, event ->
-            if (event.action == android.view.MotionEvent.ACTION_DOWN) {
-                // Only hide bottom sheet if clicking on empty map area
-                if (isBottomSheetVisible) {
-                    // You can add logic here to check if click is on map vs UI elements
-                }
-            }
-            false
+            // Optimize rendering
+            isHorizontalMapRepetitionEnabled = false
+            isVerticalMapRepetitionEnabled = false
+            setScrollableAreaLimitDouble(null)
         }
 
         mapInitialized.value = true
 
+        // Fetch vehicles immediately and continuously
         while (true) {
             fetchLiveVehicles()
-            delay(1000)
+            delay(2000) // Reduced from 1000ms to 2000ms for better performance
         }
     }
 
@@ -550,19 +636,66 @@ fun LiveMapScreen(navController: NavController) {
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Map View - occupies full screen but gets clipped by bottom sheet
-            if (mapInitialized.value) {
-                AndroidView(
-                    factory = { mapView },
-                    modifier = Modifier.fillMaxSize()
-                )
+            // Map View with loading overlay
+            Box(modifier = Modifier.fillMaxSize()) {
+                if (mapInitialized.value) {
+                    AndroidView(
+                        factory = { mapView },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+
+                // Loading indicator while map initializes or vehicles load
+                if (!mapInitialized.value || liveVehicles.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.White.copy(alpha = 0.8f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(48.dp)
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = if (!mapInitialized.value) "Initializing map..." else "Loading vehicles...",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
             }
 
-            // Floating Action Button - Fixed positioning
             FloatingActionButton(
                 onClick = {
-                    mapView.controller.setZoom(6.0)
-                    mapView.controller.setCenter(GeoPoint(20.5937, 78.9629))
+                    if (userLocation != null) {
+                        // Animate smoothly to user location
+                        mapView.controller.animateTo(userLocation, 15.0, 800L)
+                        Toast.makeText(context, "Centered on your location", Toast.LENGTH_SHORT).show()
+
+                        // Find and highlight closest vehicle again
+                        if (liveVehicles.isNotEmpty()) {
+                            val closestPair = findClosestVehicle(userLocation!!, liveVehicles)
+                            closestPair?.let { (vehicle, distance) ->
+                                val distanceKm = distance / 1000
+                                Toast.makeText(
+                                    context,
+                                    "Nearest: ${vehicle.deviceId} (${String.format("%.2f", distanceKm)} km)",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                    } else {
+                        // Reset to default view with animation
+                        mapView.controller.animateTo(GeoPoint(20.5937, 78.9629), 6.0, 800L)
+                        Toast.makeText(context, "Getting your location...", Toast.LENGTH_SHORT).show()
+                    }
                 },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
@@ -577,10 +710,13 @@ fun LiveMapScreen(navController: NavController) {
                     },
                 containerColor = MaterialTheme.colorScheme.primary
             ) {
-                Icon(Icons.Filled.MyLocation, contentDescription = "Recenter")
+                Icon(
+                    imageVector = if (userLocation != null) Icons.Filled.MyLocation else Icons.Filled.LocationOn,
+                    contentDescription = "My Location",
+                    tint = Color.White
+                )
             }
 
-            // Menu Button
             IconButton(
                 onClick = { isSidebarVisible = !isSidebarVisible },
                 modifier = Modifier
@@ -590,7 +726,6 @@ fun LiveMapScreen(navController: NavController) {
                 Icon(Icons.Filled.Menu, contentDescription = "Menu")
             }
 
-            // Sidebar (unchanged)
             AnimatedVisibility(
                 visible = isSidebarVisible,
                 enter = slideInHorizontally { it },
@@ -642,7 +777,6 @@ fun LiveMapScreen(navController: NavController) {
                 }
             }
 
-            // Bottom Sheet - shows vehicle details
             selectedVehicle?.let { vehicle ->
                 VehicleBottomSheet(
                     vehicle = vehicle,
@@ -667,6 +801,40 @@ fun LiveMapScreen(navController: NavController) {
     }
 }
 
+// ----------------------- Helper function to get user location -----------------------
+
+private fun getUserLocation(
+    fusedLocationClient: FusedLocationProviderClient,
+    context: Context,
+    onLocationReceived: (GeoPoint) -> Unit
+) {
+    try {
+        val cancellationTokenSource = CancellationTokenSource()
+
+        fusedLocationClient.getCurrentLocation(
+            Priority.PRIORITY_HIGH_ACCURACY,
+            cancellationTokenSource.token
+        ).addOnSuccessListener { location: Location? ->
+            location?.let {
+                val geoPoint = GeoPoint(it.latitude, it.longitude)
+                onLocationReceived(geoPoint)
+                android.util.Log.d("LiveMapScreen", "User location: ${it.latitude}, ${it.longitude}")
+            } ?: run {
+                android.util.Log.w("LiveMapScreen", "Location is null")
+                Toast.makeText(context, "Unable to get current location", Toast.LENGTH_SHORT).show()
+            }
+        }.addOnFailureListener { exception ->
+            android.util.Log.e("LiveMapScreen", "Failed to get location", exception)
+            Toast.makeText(context, "Failed to get location: ${exception.message}", Toast.LENGTH_SHORT).show()
+        }
+    } catch (e: SecurityException) {
+        android.util.Log.e("LiveMapScreen", "Location permission not granted", e)
+        Toast.makeText(context, "Location permission not granted", Toast.LENGTH_SHORT).show()
+    }
+}
+
+// ----------------------- Bottom Sheet Component -----------------------
+
 @Composable
 fun VehicleBottomSheet(
     vehicle: LiveVehicle,
@@ -689,7 +857,6 @@ fun VehicleBottomSheet(
             .fillMaxWidth()
             .height(bottomSheetHeight)
             .offset {
-                // Position at bottom of screen and move up based on visibility
                 IntOffset(
                     x = 0,
                     y = with(density) {
@@ -705,21 +872,17 @@ fun VehicleBottomSheet(
         Column(
             modifier = Modifier.fillMaxSize()
         ) {
-            // Drag Handle
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp)
                     .pointerInput(Unit) {
                         detectDragGestures { change, dragAmount ->
-                            // Positive dragAmount.y means dragging down (should hide sheet)
-                            // Negative dragAmount.y means dragging up (should show more sheet)
                             onDragChange(dragAmount.y)
                         }
                     },
                 contentAlignment = Alignment.Center
             ) {
-                // Handle bar
                 Box(
                     modifier = Modifier
                         .width(60.dp)
@@ -727,7 +890,6 @@ fun VehicleBottomSheet(
                         .background(Color.Gray.copy(alpha = 0.3f), RoundedCornerShape(2.dp))
                 )
 
-                // Close button
                 IconButton(
                     onClick = onDismiss,
                     modifier = Modifier.align(Alignment.CenterEnd)
@@ -740,7 +902,6 @@ fun VehicleBottomSheet(
                 }
             }
 
-            // Scrollable Content
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -748,12 +909,10 @@ fun VehicleBottomSheet(
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp)
             ) {
-                // Vehicle Header
                 VehicleHeaderSection(vehicle)
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Quick Stats
                 VehicleStatsSection(vehicle)
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -762,7 +921,6 @@ fun VehicleBottomSheet(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Location Information
                 Text(
                     text = "Location Details",
                     style = MaterialTheme.typography.titleMedium,
@@ -776,7 +934,6 @@ fun VehicleBottomSheet(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Technical Information
                 Text(
                     text = "Technical Details",
                     style = MaterialTheme.typography.titleMedium,
@@ -790,7 +947,6 @@ fun VehicleBottomSheet(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Action Buttons
                 VehicleActionButtons(
                     vehicle = vehicle,
                     navController = navController,
@@ -799,7 +955,6 @@ fun VehicleBottomSheet(
                     onDismiss = onDismiss
                 )
 
-                // Extra padding to ensure buttons are not cropped
                 Spacer(modifier = Modifier.height(80.dp))
             }
         }
@@ -812,7 +967,6 @@ fun VehicleHeaderSection(vehicle: LiveVehicle) {
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Vehicle Icon
         Box(
             modifier = Modifier
                 .size(56.dp)
@@ -842,7 +996,6 @@ fun VehicleHeaderSection(vehicle: LiveVehicle) {
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Status Indicator
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
@@ -989,7 +1142,6 @@ fun VehicleActionButtons(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Track Button
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -1002,10 +1154,18 @@ fun VehicleActionButtons(
                     if (geoPoint != null) {
                         mapView.controller.setZoom(18.0)
                         mapView.controller.setCenter(geoPoint)
-                        Toast.makeText(context, "Tracking ${vehicle.deviceId}", Toast.LENGTH_SHORT).show()
+                        Toast
+                            .makeText(context, "Tracking ${vehicle.deviceId}", Toast.LENGTH_SHORT)
+                            .show()
                         onDismiss()
                     } else {
-                        Toast.makeText(context, "Invalid location for ${vehicle.deviceId}", Toast.LENGTH_SHORT).show()
+                        Toast
+                            .makeText(
+                                context,
+                                "Invalid location for ${vehicle.deviceId}",
+                                Toast.LENGTH_SHORT
+                            )
+                            .show()
                     }
                 }
                 .padding(vertical = 16.dp),
@@ -1028,7 +1188,6 @@ fun VehicleActionButtons(
             }
         }
 
-        // Playback Button
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -1040,7 +1199,7 @@ fun VehicleActionButtons(
                 )
                 .clickable {
                     onDismiss()
-                    navController.navigate("playback_map/{deviceId}")
+                    navController.navigate("playback_map/${vehicle.deviceId}")
                 }
                 .padding(vertical = 16.dp),
             contentAlignment = Alignment.Center
@@ -1080,12 +1239,11 @@ fun LocationInfoSection(vehicle: LiveVehicle) {
             vehicle.longitude.formatCoordinateForDisplay()
         )
 
-        // Add address if available
         val address = remember(vehicle.latitude, vehicle.longitude) {
             getAddressFromLocation(context, vehicle.latitude, vehicle.longitude)
         }
 
-        if (address != "Unknown") {
+        if (address != "Unknown" && address != "No location data") {
             ModernInfoRow(
                 Icons.Default.Place,
                 "Address",

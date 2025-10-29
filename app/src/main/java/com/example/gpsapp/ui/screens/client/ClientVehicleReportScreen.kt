@@ -10,6 +10,7 @@ import android.os.Environment
 import android.text.TextPaint
 import android.widget.Toast
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,13 +21,25 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -39,19 +52,20 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.gpsapp.R
 import com.example.gpsapp.network.RetrofitClient
 import com.example.gpsapp.ui.components.ScaffoldWithDrawer
-import com.example.gpsapp.ui.screens.superadmin.VehicleReportItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -61,6 +75,7 @@ import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import kotlin.collections.orEmpty
 
 data class VehicleReportItem(
     val deviceId: String,
@@ -79,15 +94,13 @@ fun ClientVehicleReportScreen(navController: NavController) {
     ScaffoldWithDrawer(
         navController = navController,
         screenTitle = "Vehicle Report",
-        role = "superadmin"
+        role = "client"
     ) { innerPadding ->
         val context = LocalContext.current
         val coroutineScope = rememberCoroutineScope()
 
         var downloadFilePath by remember { mutableStateOf("") }
-
         var startDownload by remember { mutableStateOf(false) }
-
 
         var showFilterDialog by remember { mutableStateOf(false) }
         var showDownloadDialog by remember { mutableStateOf(false) }
@@ -96,32 +109,94 @@ fun ClientVehicleReportScreen(navController: NavController) {
         var selectedFormat by remember { mutableStateOf("PDF") }
 
         var selectedItem by remember { mutableStateOf<VehicleReportItem?>(null) }
-        var isLoading by remember { mutableStateOf(true) }
+        var isLoading by remember { mutableStateOf(false) }
 
         var page by remember { mutableStateOf(1) }
         val pageLimit = 100
         var isLoadingMore by remember { mutableStateOf(false) }
         var hasMoreData by remember { mutableStateOf(true) }
 
-
         val vehicleList = remember { mutableStateListOf<VehicleReportItem>() }
         val filteredList = remember { mutableStateListOf<VehicleReportItem>() }
 
         var fromDateTime by remember { mutableStateOf("Select From Date & Time") }
         var toDateTime by remember { mutableStateOf("Select To Date & Time") }
-        var deviceId by remember { mutableStateOf("") }
-        var selectedViolation by remember { mutableStateOf("Select Violation") }
+        var selectedViolation by remember { mutableStateOf("All Violations") }
         var violationExpanded by remember { mutableStateOf(false) }
 
+        val availableDevices = remember { mutableStateListOf<String>() }
+        var selectedDevice by remember { mutableStateOf("All Devices") }
+        var deviceExpanded by remember { mutableStateOf(false) }
+        var isLoadingDevices by remember { mutableStateOf(false) }
 
         val violationOptions = listOf(
             "All Violations",
-            "Overspeed",
+            "Over Speed",
             "Harsh Braking",
             "Harsh Acceleration"
         )
 
         val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+
+        fun fetchAvailableDevices() {
+            coroutineScope.launch {
+                isLoadingDevices = true
+                try {
+                    val resp = RetrofitClient.apiService.getLiveVehicles()
+                    if (resp.isSuccessful) {
+                        val devices = resp.body()
+                        availableDevices.clear()
+                        availableDevices.add("All Devices")
+
+                        when {
+                            devices == null -> {
+                                Toast.makeText(context, "No devices found", Toast.LENGTH_SHORT).show()
+                            }
+                            devices is List<*> -> {
+                                devices.forEach { vehicle ->
+                                    try {
+                                        val deviceId = when (vehicle) {
+                                            is Map<*, *> -> vehicle["deviceId"]?.toString() ?: vehicle["device_id"]?.toString()
+                                            else -> {
+                                                val field = vehicle?.javaClass?.getDeclaredField("deviceId")
+                                                field?.isAccessible = true
+                                                field?.get(vehicle)?.toString()
+                                            }
+                                        }
+
+                                        if (!deviceId.isNullOrEmpty()) {
+                                            availableDevices.add(deviceId)
+                                        }
+                                    } catch (e: Exception) {
+                                        // Skip this item if we can't extract deviceId
+                                    }
+                                }
+
+                                if (availableDevices.size == 1) {
+                                    Toast.makeText(context, "No valid device IDs found", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            else -> {
+                                Toast.makeText(context, "Unexpected response format", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } else {
+                        Toast.makeText(context, "Failed to fetch devices: ${resp.code()}", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                } finally {
+                    isLoadingDevices = false
+                }
+            }
+        }
+
+        LaunchedEffect(showFilterDialog) {
+            if (showFilterDialog && availableDevices.isEmpty()) {
+                fetchAvailableDevices()
+            }
+        }
 
         fun showDateTimePicker(setValue: (String) -> Unit) {
             val now = Calendar.getInstance()
@@ -146,8 +221,13 @@ fun ClientVehicleReportScreen(navController: NavController) {
                 now.get(Calendar.DAY_OF_MONTH)
             ).show()
         }
+
         fun fetchVehicleReports(reset: Boolean = false) {
             coroutineScope.launch {
+                if (fromDateTime == "Select From Date & Time" || toDateTime == "Select To Date & Time") {
+                    Toast.makeText(context, "Please select From & To date before fetching data.", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
                 if (reset) {
                     isLoading = true
                     page = 1
@@ -185,10 +265,12 @@ fun ClientVehicleReportScreen(navController: NavController) {
                         toApi(toDateTime)
                     }
 
+                    val deviceIdParam = if (selectedDevice != "All Devices") selectedDevice else null
+
                     val resp = RetrofitClient.apiService.getViolationReports(
                         fromDate = fromDate,
                         toDate = toDate,
-                        deviceId = if (deviceId.isNotEmpty()) deviceId else null,
+                        deviceId = deviceIdParam,
                         violationType = if (selectedViolation != "All Violations" && selectedViolation != "Select Violation") selectedViolation else null,
                         page = page,
                         limit = pageLimit
@@ -205,7 +287,12 @@ fun ClientVehicleReportScreen(navController: NavController) {
                                     VehicleReportItem(
                                         deviceId = item.deviceId,
                                         vehicle = item.vehicleNumber,
-                                        violationType = item.additionalData ?: "No Violations",
+                                        violationType = when (item.additionalData?.lowercase()) {
+                                            "over speed" -> "Over Speed"
+                                            "harsh braking" -> "Harsh Braking"
+                                            "harsh acceleration" -> "Harsh Acceleration"
+                                            else -> item.additionalData ?: "No Violations"
+                                        },
                                         latitude = item.latitude.toDoubleOrNull() ?: 0.0,
                                         longitude = item.longitude.toDoubleOrNull() ?: 0.0,
                                         speed = item.speed.toFloatOrNull() ?: 0f,
@@ -217,7 +304,16 @@ fun ClientVehicleReportScreen(navController: NavController) {
                             if (list.size < pageLimit) hasMoreData = false
                             page++
                             filteredList.clear()
-                            filteredList.addAll(vehicleList)
+                            filteredList.addAll(
+                                if (selectedViolation != "All Violations" && selectedViolation != "Select Violation") {
+                                    val normalizedSelected = selectedViolation.trim().lowercase().replace(" ", "")
+                                    vehicleList.filter {
+                                        it.violationType.trim().lowercase().replace(" ", "") == normalizedSelected
+                                    }
+                                } else {
+                                    vehicleList
+                                }
+                            )
                         }
                     } else {
                         Toast.makeText(context, "API Error: ${resp.code()}", Toast.LENGTH_SHORT).show()
@@ -250,97 +346,46 @@ fun ClientVehicleReportScreen(navController: NavController) {
             ) {
                 Text(
                     text = "Vehicle Violation Report",
-                    fontSize = 20.sp,
+                    fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 8.dp),
+                        .padding(vertical = 12.dp),
                     textAlign = TextAlign.Center
                 )
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Button(onClick = { showFilterDialog = true }) {
-                        Text("Filter")
-                    }
-                    if (showFilterDialog) {
-                        AlertDialog(
-                            onDismissRequest = { showFilterDialog = false },
-                            confirmButton = {
-                                TextButton(onClick = {
-                                    showFilterDialog = false
-                                    fetchVehicleReports(reset = true) // ⬅️ Fetch data only when filters applied
-                                }) {
-                                    Text("Apply")
-                                }
-                            },
-                            dismissButton = {
-                                TextButton(onClick = { showFilterDialog = false }) {
-                                    Text("Cancel")
-                                }
-                            },
-                            title = { Text("Filter Reports") },
-                            text = {
-                                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-
-                                    // From Date & Time Picker
-                                    Button(onClick = { showDateTimePicker { fromDateTime = it } }) {
-                                        Text(fromDateTime)
-                                    }
-
-                                    // To Date & Time Picker
-                                    Button(onClick = { showDateTimePicker { toDateTime = it } }) {
-                                        Text(toDateTime)
-                                    }
-
-                                    // Device ID Input
-                                    androidx.compose.material3.OutlinedTextField(
-                                        value = deviceId,
-                                        onValueChange = { deviceId = it },
-                                        label = { Text("Device ID (Optional)") },
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-
-                                    // Violation Type Dropdown
-                                    Box {
-                                        Button(onClick = { violationExpanded = !violationExpanded }) {
-                                            Text(selectedViolation)
-                                        }
-                                        androidx.compose.material3.DropdownMenu(
-                                            expanded = violationExpanded,
-                                            onDismissRequest = { violationExpanded = false }
-                                        ) {
-                                            violationOptions.forEach { option ->
-                                                androidx.compose.material3.DropdownMenuItem(
-                                                    text = { Text(option) },
-                                                    onClick = {
-                                                        selectedViolation = option
-                                                        violationExpanded = false
-                                                    }
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                    Button(
+                        onClick = { showFilterDialog = true },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Filter",
+                            modifier = Modifier.padding(end = 4.dp)
                         )
-                    }
-                    Button(onClick = { showDownloadDialog = true }) {
-                        Text("Download Report")
+                        Text("Filter", fontSize = 14.sp)
                     }
 
+                    Button(
+                        onClick = { showDownloadDialog = true },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+                    ) {
+                        Text("Download", fontSize = 14.sp)
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
                 if (isLoading) {
                     Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(innerPadding),
+                        modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -349,132 +394,341 @@ fun ClientVehicleReportScreen(navController: NavController) {
                             Text("Fetching Data...", color = Color.White, fontSize = 16.sp)
                         }
                     }
-                } else {
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        item {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                listOf(
-                                    "Dev",
-                                    "Veh",
-                                    "Viol",
-                                    "Lat",
-                                    "Long",
-                                    "Spd",
-                                    "Time",
-                                    "Drv"
-                                ).forEach {
+                } else if (filteredList.isNotEmpty()) {
+                    Card(
+                        modifier = Modifier.fillMaxSize(),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xCC000000)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        LazyColumn(modifier = Modifier.fillMaxSize()) {
+                            item {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color(0xFF1976D2))
+                                        .padding(vertical = 12.dp, horizontal = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
                                     Text(
-                                        it,
+                                        "Device ID",
+                                        modifier = Modifier.weight(1.5f),
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    )
+                                    Text(
+                                        "Violation",
+                                        modifier = Modifier.weight(1.5f),
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    )
+                                    Text(
+                                        "Speed",
                                         modifier = Modifier.weight(1f),
                                         color = Color.White,
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp
+                                        fontSize = 13.sp,
+                                        textAlign = TextAlign.Center
                                     )
-                                }
-                            }
-                            Divider(color = Color.Gray)
-                        }
-
-                        items(filteredList) { item ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { selectedItem = item }
-                                    .padding(vertical = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                listOf(
-                                    item.deviceId,
-                                    item.vehicle,
-                                    item.violationType,
-                                    "${item.latitude}".take(6),
-                                    "${item.longitude}".take(6),
-                                    item.speed.toString(),
-                                    item.time,
-                                    item.driverName
-                                ).forEach {
                                     Text(
-                                        it,
-                                        modifier = Modifier.weight(1f),
+                                        "Timestamp",
+                                        modifier = Modifier.weight(2f),
                                         color = Color.White,
-                                        fontSize = 12.sp
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
                                     )
                                 }
                             }
-                            Divider(color = Color.Gray)
-                        }
 
-                        if (fromDateTime != "Select From Date & Time" && toDateTime != "Select To Date & Time") {
-                            if (hasMoreData && !isLoadingMore) {
-                                item {
-                                    Button(
-                                        onClick = { fetchVehicleReports() },
+                            items(filteredList) { item ->
+                                Column {
+                                    Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(8.dp)
+                                            .clickable { selectedItem = item }
+                                            .background(Color(0x22FFFFFF))
+                                            .padding(vertical = 12.dp, horizontal = 8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text("Load More")
+                                        Text(
+                                            text = item.deviceId,
+                                            modifier = Modifier.weight(1.5f),
+                                            color = Color.White,
+                                            fontSize = 12.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = item.violationType,
+                                            modifier = Modifier.weight(1.5f),
+                                            color = when(item.violationType) {
+                                                "Over Speed" -> Color(0xFFFF5252)
+                                                "Harsh Braking" -> Color(0xFFFFC107)
+                                                "Harsh Acceleration" -> Color(0xFFFF9800)
+                                                else -> Color.White
+                                            },
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "${item.speed.toInt()} km/h",
+                                            modifier = Modifier.weight(1f),
+                                            color = Color.White,
+                                            fontSize = 12.sp,
+                                            textAlign = TextAlign.Center
+                                        )
+                                        Text(
+                                            text = item.time.take(16).replace("T", " "),
+                                            modifier = Modifier.weight(2f),
+                                            color = Color.White,
+                                            fontSize = 11.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    Divider(color = Color(0x33FFFFFF), thickness = 0.5.dp)
+                                }
+                            }
+
+                            if (fromDateTime != "Select From Date & Time" && toDateTime != "Select To Date & Time") {
+                                if (hasMoreData && !isLoadingMore) {
+                                    item {
+                                        OutlinedButton(
+                                            onClick = { fetchVehicleReports() },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(16.dp)
+                                        ) {
+                                            Text("Load More", color = Color.White)
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (isLoadingMore) {
+                                item {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        CircularProgressIndicator(color = Color.White)
                                     }
                                 }
                             }
                         }
-
-// ✅ Show loader when loading more
-                        if (isLoadingMore) {
-                            item {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(8.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    CircularProgressIndicator(color = Color.White)
-                                }
-                            }
-                        }
-
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "No data available. Please apply filters to fetch reports.",
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            textAlign = TextAlign.Center
+                        )
                     }
                 }
             }
         }
 
-        LaunchedEffect(startDownload) {
-            if (startDownload) {
-                showDownloadDialog = true
-                showDownloadProgress = true
-
-                withContext(Dispatchers.IO) {
-                    val path = if (selectedFormat == "PDF") {
-                        downloadAsPDF(filteredList, context)
-                    } else {
-                        downloadAsExcel(filteredList, context)
+        if (showFilterDialog) {
+            AlertDialog(
+                onDismissRequest = { showFilterDialog = false },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (fromDateTime == "Select From Date & Time" || toDateTime == "Select To Date & Time") {
+                                Toast.makeText(context, "Please select From & To date before fetching data.", Toast.LENGTH_SHORT).show()
+                            } else {
+                                showFilterDialog = false
+                                fetchVehicleReports(reset = true)
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+                    ) {
+                        Text("Apply Filter")
                     }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showFilterDialog = false }) {
+                        Text("Cancel")
+                    }
+                },
+                title = {
+                    Text(
+                        "Filter Reports",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp
+                    )
+                },
+                text = {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "From Date & Time",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.Gray
+                            )
+                            OutlinedButton(
+                                onClick = { showDateTimePicker { fromDateTime = it } },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.DateRange,
+                                    contentDescription = null,
+                                    modifier = Modifier.padding(end = 8.dp)
+                                )
+                                Text(
+                                    fromDateTime,
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
 
-                    withContext(Dispatchers.Main) {
-                        downloadFilePath = path
-                        showDownloadProgress = false
-                        showDownloadDialog = false
-                        showDownloadCompleteDialog = true
-                        startDownload = false
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "To Date & Time",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.Gray
+                            )
+                            OutlinedButton(
+                                onClick = { showDateTimePicker { toDateTime = it } },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.DateRange,
+                                    contentDescription = null,
+                                    modifier = Modifier.padding(end = 8.dp)
+                                )
+                                Text(
+                                    toDateTime,
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "Device ID",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.Gray
+                            )
+                            Box {
+                                OutlinedButton(
+                                    onClick = { deviceExpanded = !deviceExpanded },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text(
+                                        selectedDevice,
+                                        modifier = Modifier.weight(1f),
+                                        fontSize = 13.sp
+                                    )
+                                    if (isLoadingDevices) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier
+                                                .padding(start = 8.dp)
+                                                .height(16.dp)
+                                                .width(16.dp)
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowDropDown,
+                                            contentDescription = null
+                                        )
+                                    }
+                                }
+                                androidx.compose.material3.DropdownMenu(
+                                    expanded = deviceExpanded,
+                                    onDismissRequest = { deviceExpanded = false }
+                                ) {
+                                    availableDevices.forEach { device ->
+                                        androidx.compose.material3.DropdownMenuItem(
+                                            text = { Text(device) },
+                                            onClick = {
+                                                selectedDevice = device
+                                                deviceExpanded = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "Violation Type",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.Gray
+                            )
+                            Box {
+                                OutlinedButton(
+                                    onClick = { violationExpanded = !violationExpanded },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text(
+                                        selectedViolation,
+                                        modifier = Modifier.weight(1f),
+                                        fontSize = 13.sp
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDropDown,
+                                        contentDescription = null
+                                    )
+                                }
+                                androidx.compose.material3.DropdownMenu(
+                                    expanded = violationExpanded,
+                                    onDismissRequest = { violationExpanded = false }
+                                ) {
+                                    violationOptions.forEach { option ->
+                                        androidx.compose.material3.DropdownMenuItem(
+                                            text = { Text(option) },
+                                            onClick = {
+                                                selectedViolation = option
+                                                violationExpanded = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
-            }
+            )
         }
 
         if (showDownloadDialog) {
             AlertDialog(
                 onDismissRequest = { showDownloadDialog = false },
                 confirmButton = {
-                    TextButton(onClick = {
-                        showDownloadDialog = false
-                        showDownloadProgress = true
-                        startDownload = true
-                    }) {
+                    Button(
+                        onClick = {
+                            showDownloadDialog = false
+                            showDownloadProgress = true
+                            startDownload = true
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+                    ) {
                         Text("Download")
                     }
                 },
@@ -490,8 +744,10 @@ fun ClientVehicleReportScreen(navController: NavController) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
                                     .clickable { selectedFormat = format }
-                                    .padding(vertical = 4.dp),
+                                    .background(if (selectedFormat == format) Color(0x22000000) else Color.Transparent)
+                                    .padding(vertical = 8.dp, horizontal = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 androidx.compose.material3.RadioButton(
@@ -505,29 +761,43 @@ fun ClientVehicleReportScreen(navController: NavController) {
                 }
             )
         }
+
         selectedItem?.let { item ->
             AlertDialog(
                 onDismissRequest = { selectedItem = null },
                 confirmButton = {
-                    TextButton(onClick = { selectedItem = null }) {
+                    Button(
+                        onClick = { selectedItem = null },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3))
+                    ) {
                         Text("Close")
                     }
                 },
-                title = { Text("Vehicle Details") },
+                title = {
+                    Text(
+                        "Vehicle Details",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp
+                    )
+                },
                 text = {
-                    Column(modifier = Modifier.padding(8.dp)) {
-                        Text("Device ID: ${item.deviceId}")
-                        Text("Vehicle: ${item.vehicle}")
-                        Text("Violation: ${item.violationType}")
-                        Text("Latitude: ${item.latitude}")
-                        Text("Longitude: ${item.longitude}")
-                        Text("Speed: ${item.speed} km/h")
-                        Text("Time: ${item.time}")
-                        Text("Driver: ${item.driverName}")
+                    Column(
+                        modifier = Modifier.padding(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        DetailRow("Device ID", item.deviceId)
+                        DetailRow("Vehicle Number", item.vehicle)
+                        DetailRow("Violation Type", item.violationType)
+                        DetailRow("Speed", "${item.speed} km/h")
+                        DetailRow("Latitude", item.latitude.toString())
+                        DetailRow("Longitude", item.longitude.toString())
+                        DetailRow("Timestamp", item.time)
+                        DetailRow("Driver Name", item.driverName)
                     }
                 }
             )
         }
+
         if (showDownloadProgress) {
             AlertDialog(
                 onDismissRequest = {},
@@ -557,17 +827,63 @@ fun ClientVehicleReportScreen(navController: NavController) {
                     Text("File saved successfully in:\n\n$downloadFilePath")
                 },
                 confirmButton = {
-                    TextButton(onClick = {
-                        showDownloadCompleteDialog = false
-                    }) {
+                    Button(
+                        onClick = { showDownloadCompleteDialog = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+                    ) {
                         Text("OK")
                     }
                 },
                 dismissButton = {}
             )
         }
+
+        LaunchedEffect(startDownload) {
+            if (startDownload) {
+                showDownloadDialog = true
+                showDownloadProgress = true
+
+                withContext(Dispatchers.IO) {
+                    val path = if (selectedFormat == "PDF") {
+                        downloadAsPDF(filteredList, context)
+                    } else {
+                        downloadAsExcel(filteredList, context)
+                    }
+
+                    withContext(Dispatchers.Main) {
+                        downloadFilePath = path
+                        showDownloadProgress = false
+                        showDownloadDialog = false
+                        showDownloadCompleteDialog = true
+                        startDownload = false
+                    }
+                }
+            }
+        }
     }
 }
+
+@Composable
+fun DetailRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = "$label:",
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 14.sp,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = value,
+            fontSize = 14.sp,
+            modifier = Modifier.weight(1.5f),
+            textAlign = TextAlign.End
+        )
+    }
+}
+
 suspend fun downloadAsPDF(
     data: List<VehicleReportItem>,
     context: Context
@@ -604,11 +920,9 @@ suspend fun downloadAsPDF(
         val page = pdf.startPage(pageInfo)
         val canvas = page.canvas
 
-        // Draw logo
         val scaledLogo = Bitmap.createScaledBitmap(logo, 100, logoHeight, false)
         canvas.drawBitmap(scaledLogo, margin.toFloat(), margin.toFloat(), null)
 
-        // Draw header row
         val headerY = margin + logoHeight + 10
         for (i in headerColumns.indices) {
             canvas.drawText(
@@ -628,7 +942,6 @@ suspend fun downloadAsPDF(
             textPaint
         )
 
-        // Draw rows
         val start = pageIndex * rowsPerPage
         val end = minOf(start + rowsPerPage, data.size)
         var y = lineTop + 15
@@ -648,7 +961,6 @@ suspend fun downloadAsPDF(
                 canvas.drawText(row[i], columnX[i].toFloat(), y.toFloat(), textPaint)
             }
 
-            // Draw horizontal line under row
             canvas.drawLine(
                 margin.toFloat(),
                 (y + 5).toFloat(),
@@ -659,12 +971,10 @@ suspend fun downloadAsPDF(
             y += lineHeight
         }
 
-        // Draw vertical lines for borders
         for (x in columnX) {
             canvas.drawLine(x.toFloat(), tableStartY.toFloat(), x.toFloat(), y.toFloat(), textPaint)
         }
 
-        // Draw footer
         val footerText = "Generated by GPSApp • Page ${pageIndex + 1} of $totalPages"
         canvas.drawText(
             footerText,
@@ -716,7 +1026,7 @@ suspend fun downloadAsExcel(
                 it.latitude.toString(),
                 it.longitude.toString(),
                 it.speed.toString(),
-                "\"${it.time}\"", // ⬅️ Wrap time in quotes
+                "\"${it.time}\"",
                 it.driverName
             ).joinToString(",")
         }

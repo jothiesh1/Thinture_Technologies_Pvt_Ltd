@@ -37,6 +37,8 @@ import com.example.gpsapp.ui.screens.user.UserEventReportScreen
 import com.example.gpsapp.ui.screens.user.UserLiveMapScreen
 import com.example.gpsapp.ui.screens.user.UserPlaybackMapScreen
 import com.example.gpsapp.ui.screens.user.UserVehicleReportScreen
+import androidx.navigation.navArgument
+import androidx.navigation.NavType
 
 
 @Composable
@@ -83,16 +85,16 @@ fun AppNavHost(
             LiveMapScreen(navController)
         }
         composable(Screen.AdminLiveMap.route) {
-            AdminLiveMapScreen(navController = navController, role = "admin")
+            AdminLiveMapScreen(navController = navController)
         }
         composable(Screen.DealerLiveMap.route) {
-            DealerLiveMapScreen(navController = navController, role = "dealer")
+            DealerLiveMapScreen(navController = navController)
         }
         composable(Screen.ClientLiveMap.route) {
-            ClientLiveMapScreen(navController = navController, role = "client")
+            ClientLiveMapScreen(navController = navController)
         }
         composable(Screen.UserLiveMap.route) {
-            UserLiveMapScreen(navController = navController, role = "user")
+            UserLiveMapScreen(navController = navController)
         }
 
 
@@ -174,8 +176,12 @@ fun AppNavHost(
 
 
 
-        composable(Screen.Logout.route) {
-            LogoutScreen(navController)
+        composable(
+            route = "logout/{role}",
+            arguments = listOf(navArgument("role") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val role = backStackEntry.arguments?.getString("role") ?: "superadmin"
+            LogoutScreen(navController, role = role)
         }
     }
 }

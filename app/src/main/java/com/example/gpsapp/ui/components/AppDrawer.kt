@@ -33,13 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.example.gpsapp.R
-import com.example.gpsapp.data.local.UserPreferences
 import com.example.gpsapp.ui.navigation.Screen
-import kotlinx.coroutines.launch
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.platform.LocalContext
-import kotlinx.coroutines.launch
-
 @Composable
 fun AppDrawer(
     navController: NavController,
@@ -48,9 +42,6 @@ fun AppDrawer(
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
-    val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
-
 
     Column(
         modifier = Modifier
@@ -198,17 +189,11 @@ fun AppDrawer(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable {
-                    coroutineScope.launch {
-                        val userPrefs = UserPreferences(context)
-                        userPrefs.clearLogin()
-
-                        // Navigate to login screen and clear backstack
-                        navController.navigate(Screen.Login.route) {
-                            popUpTo(0) { inclusive = true }
-                        }
-
-                        onCloseDrawer()
+                    // Navigate to LogoutScreen with role parameter
+                    navController.navigate(Screen.Logout.createRoute(role)) {
+                        launchSingleTop = true
                     }
+                    onCloseDrawer()
                 }
                 .padding(12.dp)
         ) {

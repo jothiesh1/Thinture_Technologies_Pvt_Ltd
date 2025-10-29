@@ -1,6 +1,12 @@
 package com.example.gpsapp.ui.screens.superadmin
 
 import android.app.DatePickerDialog
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.pdf.PdfDocument
+import android.os.Build
+import android.os.Environment
+import android.text.TextPaint
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
@@ -48,6 +54,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -60,6 +67,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.datastore.core.IOException
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.gpsapp.R
@@ -70,12 +78,12 @@ import com.google.accompanist.swiperefresh.SwipeRefresh
 import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.launch
+import java.io.File
+import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
-import android.app.TimePickerDialog
-import com.example.gpsapp.ui.components.DateTimePicker
-import java.util.TimeZone
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -87,9 +95,18 @@ fun EventReportScreen(navController: NavController) {
     ) { innerPadding ->
 
         val context = LocalContext.current
+        val coroutineScope = rememberCoroutineScope()
+
         var showFilterDialog by remember { mutableStateOf(false) }
         var showDownloadDialog by remember { mutableStateOf(false) }
+        var showDownloadProgress by remember { mutableStateOf(false) }
+        var downloadProgress by remember { mutableStateOf(0f) }
+        var isDownloading by remember { mutableStateOf(false) }
         var selectedItem by remember { mutableStateOf<EventReportItem?>(null) }
+
+        var showDownloadComplete by remember { mutableStateOf(false) }
+        var downloadedFileName by remember { mutableStateOf("") }
+        var downloadedFilePath by remember { mutableStateOf("") }
 
         val viewModel: EventReportViewModel = viewModel()
         val reportList by viewModel.eventReports.collectAsState()
@@ -107,13 +124,255 @@ fun EventReportScreen(navController: NavController) {
         var vehicleNumber by remember { mutableStateOf("") }
         var status by remember { mutableStateOf("All") }
 
-        // Store the currently filtered device ID
         var currentFilteredDeviceId by remember { mutableStateOf<String?>(null) }
         var isFiltered by remember { mutableStateOf(false) }
 
         val statusOptions = listOf("All", "Running", "Idle", "Parked")
         val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
         val displayDateFormat = SimpleDateFormat("dd MMM yyyy HH:mm", Locale.getDefault())
+
+        fun getDownloadsDirectory(): File {
+            return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).absolutePath)
+            } else {
+                File(Environment.getExternalStorageDirectory(), "Download")
+            }
+        }
+
+        fun buildPdfContent(items: List<EventReportItem>): String {
+            val timestamp = SimpleDateFormat("dd MMM yyyy HH:mm:ss", Locale.getDefault()).format(System.currentTimeMillis())
+            val header = """
+                ========================================
+                EVENT REPORT
+                ========================================
+                Generated on: $timestamp
+                Total Records: ${items.size}
+                ========================================
+                
+            """.trimIndent()
+
+            val content = items.joinToString("\n") { item ->
+                """
+                Device ID: ${item.deviceId ?: "Unknown"}
+                Timestamp: ${item.timestamp ?: "Unknown"}
+                Latitude: ${item.latitude ?: "-"}
+                Longitude: ${item.longitude ?: "-"}
+                Speed: ${item.speed ?: "-"}
+                Ignition: ${item.ignition ?: "-"}
+                Status: ${item.vehicleStatus ?: "-"}
+                Data: ${item.additionalData ?: "-"}
+                ----------------------------------------
+                """.trimIndent()
+            }
+            return header + content
+        }
+
+        fun buildCsvContent(items: List<EventReportItem>): String {
+            val header = "Device ID,Timestamp,Latitude,Longitude,Speed,Ignition,Vehicle Status,Additional Data\n"
+            val rows = items.joinToString("\n") { item ->
+                "\"${item.deviceId ?: "Unknown"}\",\"${item.timestamp ?: "Unknown"}\",\"${item.latitude ?: "-"}\",\"${item.longitude ?: "-"}\",\"${item.speed ?: "-"}\",\"${item.ignition ?: "-"}\",\"${item.vehicleStatus ?: "-"}\",\"${item.additionalData ?: "-"}\""
+            }
+            return header + rows
+        }
+
+        fun generateCsvFile(fileName: String, items: List<EventReportItem>): File {
+            val downloadsDir = getDownloadsDirectory()
+            downloadsDir.mkdirs()
+
+            val file = File(downloadsDir, fileName)
+            val csvContent = buildCsvContent(items)
+            file.writeText(csvContent)
+
+            println("CSV file created: ${file.absolutePath}")
+            println("CSV file exists: ${file.exists()}")
+            println("CSV file size: ${file.length()} bytes")
+
+            return file
+        }
+
+        fun generatePdfFile(fileName: String, items: List<EventReportItem>): File {
+            val downloadsDir = getDownloadsDirectory()
+            downloadsDir.mkdirs()
+
+            val file = File(downloadsDir, fileName)
+            val pdf = PdfDocument()
+
+            val pageWidth = 595
+            val pageHeight = 842
+            val margin = 20
+            val lineHeight = 16
+            val usableHeight = pageHeight - (margin * 2)
+            val rowsPerPage = usableHeight / lineHeight
+
+            val textPaint = TextPaint().apply {
+                textSize = 9f
+                typeface = android.graphics.Typeface.MONOSPACE
+                color = android.graphics.Color.BLACK
+            }
+
+            val headerColumns = listOf("Device ID", "Timestamp", "Lat", "Long", "Speed", "Ignition", "Status", "Data")
+            val columnWidths = listOf(70, 100, 50, 50, 50, 50, 50, 60)
+            val columnX = columnWidths.runningFold(margin) { acc, w -> acc + w }
+
+            val totalPages = (items.size + rowsPerPage - 1) / rowsPerPage
+
+            for (pageIndex in 0 until totalPages) {
+                val pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageIndex + 1).create()
+                val page = pdf.startPage(pageInfo)
+                val canvas = page.canvas
+
+                // Draw title
+                val titlePaint = TextPaint().apply {
+                    textSize = 14f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    color = android.graphics.Color.BLACK
+                }
+                canvas.drawText("EVENT REPORT", margin.toFloat(), (margin + 15).toFloat(), titlePaint)
+
+                // Draw timestamp
+                val timestamp = SimpleDateFormat("dd MMM yyyy HH:mm:ss", Locale.getDefault()).format(System.currentTimeMillis())
+                val metaPaint = TextPaint().apply {
+                    textSize = 8f
+                    color = android.graphics.Color.GRAY
+                }
+                canvas.drawText("Generated: $timestamp", margin.toFloat(), (margin + 30).toFloat(), metaPaint)
+
+                val headerY = margin + 45
+
+                // Draw column headers
+                for (i in headerColumns.indices) {
+                    canvas.drawText(
+                        headerColumns[i],
+                        columnX[i].toFloat(),
+                        headerY.toFloat(),
+                        textPaint.apply { typeface = android.graphics.Typeface.DEFAULT_BOLD }
+                    )
+                }
+
+                // Draw header separator line
+                val lineTop = headerY + 5
+                canvas.drawLine(
+                    margin.toFloat(),
+                    lineTop.toFloat(),
+                    (pageWidth - margin).toFloat(),
+                    lineTop.toFloat(),
+                    textPaint
+                )
+
+                // Draw table data
+                val start = pageIndex * rowsPerPage
+                val end = minOf(start + rowsPerPage, items.size)
+                var y = lineTop + 12
+
+                textPaint.typeface = android.graphics.Typeface.MONOSPACE
+
+                for (item in items.subList(start, end)) {
+                    fun truncate(text: String?, length: Int, default: String = "-"): String {
+                        return (text ?: default).let {
+                            if (it.length > length) it.substring(0, length) else it
+                        }
+                    }
+
+                    val row = listOf(
+                        truncate(item.deviceId, 10, "Unknown"),
+                        truncate(item.timestamp, 19, "Unknown"),
+                        truncate(item.latitude, 6),
+                        truncate(item.longitude, 6),
+                        truncate(item.speed?.toString(), 5),
+                        truncate(item.ignition, 5),
+                        truncate(item.vehicleStatus, 8),
+                        truncate(item.additionalData, 10)
+                    )
+
+                    for (i in row.indices) {
+                        canvas.drawText(row[i], columnX[i].toFloat(), y.toFloat(), textPaint)
+                    }
+
+                    y += lineHeight
+                }
+
+                // Draw footer
+                val footerText = "Page ${pageIndex + 1} of $totalPages"
+                canvas.drawText(
+                    footerText,
+                    margin.toFloat(),
+                    (pageHeight - margin).toFloat(),
+                    metaPaint
+                )
+
+                pdf.finishPage(page)
+            }
+
+            try {
+                pdf.writeTo(FileOutputStream(file))
+                println("✅ PDF file created: ${file.absolutePath}")
+                println("PDF file size: ${file.length()} bytes")
+            } catch (e: IOException) {
+                println("❌ PDF creation error: ${e.message}")
+                e.printStackTrace()
+            } finally {
+                pdf.close()
+            }
+
+            return file
+        }    
+
+        fun downloadReport(format: String) {
+            coroutineScope.launch {
+                isDownloading = true
+                showDownloadProgress = true
+                downloadProgress = 0f
+
+                try {
+                    val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(System.currentTimeMillis())
+                    val fileName = "EventReport_$timestamp.$format"
+
+                    println("Starting download: $fileName")
+
+                    downloadProgress = 0.2f
+                    kotlinx.coroutines.delay(300)
+
+                    downloadProgress = 0.4f
+                    println("Generating $format report with ${reportList.size} items...")
+
+                    val file = if (format == "csv") {
+                        generateCsvFile(fileName, reportList)
+                    } else {
+                        generatePdfFile(fileName, reportList)
+                    }
+
+                    downloadProgress = 0.8f
+                    kotlinx.coroutines.delay(300)
+
+                    if (!file.exists()) {
+                        throw Exception("Failed to create file: $fileName")
+                    }
+
+                    downloadProgress = 1f
+                    downloadedFileName = fileName
+                    downloadedFilePath = file.absolutePath
+
+                    isDownloading = false
+                    showDownloadProgress = false
+                    showDownloadDialog = false
+                    showDownloadComplete = true
+
+                    println("✅ Download completed successfully!")
+                    println("File: $downloadedFileName")
+                    println("Path: $downloadedFilePath")
+                    println("Size: ${file.length()} bytes")
+
+                    Toast.makeText(context, "Report downloaded successfully", Toast.LENGTH_SHORT).show()
+
+                } catch (e: Exception) {
+                    println("❌ Download error: ${e.message}")
+                    e.printStackTrace()
+                    isDownloading = false
+                    showDownloadProgress = false
+                    Toast.makeText(context, "Download failed: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
 
         fun showDateTimePicker(setValue: (String) -> Unit, isToDate: Boolean = false) {
             val now = Calendar.getInstance()
@@ -126,7 +385,7 @@ fun EventReportScreen(navController: NavController) {
                         set(Calendar.DAY_OF_MONTH, day)
                     }
 
-                    TimePickerDialog(
+                    android.app.TimePickerDialog(
                         context,
                         { _, hourOfDay, minute ->
                             selected.set(Calendar.HOUR_OF_DAY, hourOfDay)
@@ -155,12 +414,10 @@ fun EventReportScreen(navController: NavController) {
             viewModel.fetchEventReports("", "", "", null, reset = true)
         }
 
-        // Initial fetch
         LaunchedEffect(Unit) {
             viewModel.fetchEventReports("", "", "", null, reset = true)
         }
 
-        // Fetch devices when filter dialog is opened
         LaunchedEffect(showFilterDialog) {
             if (showFilterDialog) {
                 viewModel.fetchDevices()
@@ -178,7 +435,6 @@ fun EventReportScreen(navController: NavController) {
                 }
         }
 
-
         Box(modifier = Modifier.fillMaxSize()) {
             Image(
                 painter = painterResource(id = R.drawable.imagelogin),
@@ -194,7 +450,6 @@ fun EventReportScreen(navController: NavController) {
                     .padding(16.dp),
                 verticalArrangement = Arrangement.Top
             ) {
-                // Header
                 Text(
                     text = "Event Status Report",
                     fontSize = 24.sp,
@@ -206,7 +461,6 @@ fun EventReportScreen(navController: NavController) {
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Action Buttons
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -237,7 +491,7 @@ fun EventReportScreen(navController: NavController) {
                             contentColor = Color.White
                         ),
                         shape = RoundedCornerShape(8.dp),
-                        enabled = reportList.isNotEmpty()
+                        enabled = reportList.isNotEmpty() && !isDownloading
                     ) {
                         Icon(
                             imageVector = Icons.Default.Download,
@@ -251,7 +505,48 @@ fun EventReportScreen(navController: NavController) {
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Filter Info Card
+                if (showDownloadProgress) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color.White.copy(alpha = 0.15f)
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Downloading...",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "${(downloadProgress * 100).toInt()}%",
+                                    color = Color.White,
+                                    fontSize = 12.sp
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            LinearProgressIndicator(
+                                progress = { downloadProgress },
+                                modifier = Modifier.fillMaxWidth(),
+                                color = Color(0xFF0066CC),
+                                trackColor = Color.White.copy(alpha = 0.3f)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+
                 if (isFiltered) {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -301,7 +596,6 @@ fun EventReportScreen(navController: NavController) {
                     Spacer(modifier = Modifier.height(12.dp))
                 }
 
-                // Loading indicator
                 if (loading || loadingDevices) {
                     LinearProgressIndicator(
                         modifier = Modifier.fillMaxWidth(),
@@ -357,7 +651,6 @@ fun EventReportScreen(navController: NavController) {
                             val lat = item.latitude?.let { if (it.length >= 6) it.substring(0, 6) else it } ?: "-"
                             val lon = item.longitude?.let { if (it.length >= 6) it.substring(0, 6) else it } ?: "-"
 
-                            // Display the device ID - prioritize the filtered device ID if available
                             val displayDeviceId = item.deviceId
                                 ?: currentFilteredDeviceId
                                 ?: selectedDeviceId
@@ -424,7 +717,6 @@ fun EventReportScreen(navController: NavController) {
                                     return@Button
                                 }
 
-                                // Store the filtered device ID
                                 currentFilteredDeviceId = vehicleNumber.trim()
                                 isFiltered = true
 
@@ -459,7 +751,6 @@ fun EventReportScreen(navController: NavController) {
                     },
                     text = {
                         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            // From Date
                             OutlinedTextField(
                                 value = if (fromDate.isEmpty()) "" else {
                                     try {
@@ -481,7 +772,6 @@ fun EventReportScreen(navController: NavController) {
                                 colors = OutlinedTextFieldDefaults.colors()
                             )
 
-                            // To Date
                             OutlinedTextField(
                                 value = if (toDate.isEmpty()) "" else {
                                     try {
@@ -503,7 +793,6 @@ fun EventReportScreen(navController: NavController) {
                                 colors = OutlinedTextFieldDefaults.colors()
                             )
 
-                            // Device ID Dropdown
                             var deviceExpanded by remember { mutableStateOf(false) }
                             ExposedDropdownMenuBox(
                                 expanded = deviceExpanded,
@@ -558,7 +847,6 @@ fun EventReportScreen(navController: NavController) {
                                 }
                             }
 
-                            // Status Dropdown
                             var statusExpanded by remember { mutableStateOf(false) }
                             ExposedDropdownMenuBox(
                                 expanded = statusExpanded,
@@ -615,8 +903,8 @@ fun EventReportScreen(navController: NavController) {
                 )
             }
 
-            // Download Dialog
-            if (showDownloadDialog) {
+            // Download Format Dialog
+            if (showDownloadDialog && !showDownloadProgress) {
                 AlertDialog(
                     onDismissRequest = { showDownloadDialog = false },
                     title = {
@@ -635,24 +923,22 @@ fun EventReportScreen(navController: NavController) {
                             Text("Choose download format:")
 
                             Button(
-                                onClick = {
-                                    Toast.makeText(context, "Downloading as PDF...", Toast.LENGTH_SHORT).show()
-                                    showDownloadDialog = false
-                                    // TODO: Implement PDF download
-                                },
-                                modifier = Modifier.fillMaxWidth()
+                                onClick = { downloadReport("pdf") },
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = !isDownloading
                             ) {
+                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.size(8.dp))
                                 Text("Download as PDF")
                             }
 
                             Button(
-                                onClick = {
-                                    Toast.makeText(context, "Downloading as CSV...", Toast.LENGTH_SHORT).show()
-                                    showDownloadDialog = false
-                                    // TODO: Implement CSV download
-                                },
-                                modifier = Modifier.fillMaxWidth()
+                                onClick = { downloadReport("csv") },
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = !isDownloading
                             ) {
+                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.size(8.dp))
                                 Text("Download as CSV")
                             }
                         }
@@ -661,6 +947,151 @@ fun EventReportScreen(navController: NavController) {
                     dismissButton = {
                         TextButton(onClick = { showDownloadDialog = false }) {
                             Text("Cancel")
+                        }
+                    }
+                )
+            }
+
+            // Download Complete Dialog
+            if (showDownloadComplete) {
+                AlertDialog(
+                    onDismissRequest = { showDownloadComplete = false },
+                    title = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Download,
+                                contentDescription = null,
+                                modifier = Modifier.size(28.dp),
+                                tint = Color(0xFF00AA44)
+                            )
+                            Spacer(modifier = Modifier.size(12.dp))
+                            Text(
+                                "Download Completed",
+                                color = Color(0xFF00AA44),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp
+                            )
+                        }
+                    },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            Text(
+                                "Your report has been downloaded successfully!",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = Color.Black
+                            )
+
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = Color(0xFF0066CC).copy(alpha = 0.1f)
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                border = androidx.compose.material3.CardDefaults.outlinedCardBorder()
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    // File Name
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            "File Name",
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 11.sp,
+                                            color = Color(0xFF0066CC)
+                                        )
+                                        Text(
+                                            downloadedFileName,
+                                            fontSize = 13.sp,
+                                            color = Color.Black,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+
+                                    HorizontalDivider(
+                                        color = Color(0xFF0066CC).copy(alpha = 0.3f),
+                                        thickness = 1.dp
+                                    )
+
+                                    // Location
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            "Location",
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 11.sp,
+                                            color = Color(0xFF0066CC)
+                                        )
+                                        Text(
+                                            "Downloads Folder",
+                                            fontSize = 13.sp,
+                                            color = Color.Black,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+
+                                    HorizontalDivider(
+                                        color = Color(0xFF0066CC).copy(alpha = 0.3f),
+                                        thickness = 1.dp
+                                    )
+
+                                    // File Size
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            "Status",
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 11.sp,
+                                            color = Color(0xFF0066CC)
+                                        )
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Download,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp),
+                                                tint = Color(0xFF00AA44)
+                                            )
+                                            Text(
+                                                "Ready to use",
+                                                fontSize = 13.sp,
+                                                color = Color(0xFF00AA44),
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = { showDownloadComplete = false },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF0066CC)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Done", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 )

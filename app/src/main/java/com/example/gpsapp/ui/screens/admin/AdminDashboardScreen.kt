@@ -1,33 +1,30 @@
 package com.example.gpsapp.ui.screens.admin
 
-import android.graphics.Color.TRANSPARENT
+import android.graphics.Color as AndroidColor
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -37,7 +34,6 @@ import androidx.navigation.compose.rememberNavController
 import com.example.gpsapp.R
 import com.example.gpsapp.data.model.DashboardViewModel
 import com.example.gpsapp.ui.components.ScaffoldWithDrawer
-import com.example.gpsapp.ui.screens.dealer.MinimalHorizontalBarChart
 import com.github.mikephil.charting.charts.HorizontalBarChart
 import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.BarData
@@ -51,16 +47,26 @@ import com.github.mikephil.charting.listener.OnChartValueSelectedListener
 @Composable
 fun AdminDashboardScreen(
     navController: NavController,
-    viewModel: DashboardViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    viewModel: DashboardViewModel? = null
 ) {
+    val actualViewModel = viewModel ?: androidx.lifecycle.viewmodel.compose.viewModel()
     var dialogState by remember { mutableStateOf(false) }
     var dialogLabel by remember { mutableStateOf("") }
     var dialogValue by remember { mutableStateOf(0f) }
-    val status by viewModel.statusData.collectAsState()
+    var dialogIcon by remember { mutableStateOf<ImageVector>(Icons.Default.Info) }
+    var dialogColor by remember { mutableStateOf(Color.Blue) }
+    val status by actualViewModel.statusData.collectAsState()
+
+    var isVisible by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        isVisible = true
+        actualViewModel.fetchVehicleStatus()
+    }
 
     ScaffoldWithDrawer(
         navController = navController,
-        screenTitle = "Admin Dashboard",
+        screenTitle = "Dashboard",
         role = "admin"
     ) { innerPadding ->
         Box(
@@ -70,97 +76,391 @@ fun AdminDashboardScreen(
         ) {
             Image(
                 painter = painterResource(id = R.drawable.imagelogin),
-                contentDescription = null,
+                contentDescription = "Background image for dashboard",
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .fillMaxSize()
+                    .blur(8.dp)
             )
 
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0xAA000000))
+                    .background(Color.Black.copy(alpha = 0.5f))
             )
 
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 16.dp, vertical = 24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Top
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(
-                    text = "Fleet Dashboard",
-                    style = MaterialTheme.typography.headlineSmall.copy(color = Color.White),
-                    fontWeight = FontWeight.Bold
-                )
+                AnimatedVisibility(
+                    visible = isVisible,
+                    enter = fadeIn() + slideInVertically()
+                ) {
+                    DashboardHeaderAdmin()
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                val totalVehicles = (status?.moving ?: 0) + (status?.idle ?: 0) +
+                        (status?.parked ?: 0) + (status?.offline ?: 0)
+                val activeVehicles = (status?.moving ?: 0) + (status?.idle ?: 0)
+
+                AnimatedVisibility(
+                    visible = isVisible,
+                    enter = fadeIn(animationSpec = tween(600, delayMillis = 200)) +
+                            slideInVertically(animationSpec = tween(600, delayMillis = 200))
+                ) {
+                    StatsSummaryCardsAdmin(
+                        totalVehicles = totalVehicles,
+                        activeVehicles = activeVehicles
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(32.dp))
 
-                Text(
-                    text = "Vehicle Status",
-                    style = MaterialTheme.typography.titleMedium.copy(color = Color.White)
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-
-                if (status == null) {
-                    Text("Loading vehicle status...", color = Color.White)
-                } else {
-                    val running = (status?.moving ?: 0).toFloat()
-                    val idle = (status?.idle ?: 0).toFloat()
-                    val parked = (status?.parked ?: 0).toFloat()
-                    val offline = (status?.offline ?: 0).toFloat()
-
-                    MinimalHorizontalBarChart(
+                AnimatedVisibility(
+                    visible = isVisible,
+                    enter = fadeIn(animationSpec = tween(600, delayMillis = 400)) +
+                            slideInVertically(animationSpec = tween(600, delayMillis = 400))
+                ) {
+                    EnhancedDashboardSection(
+                        title = "Vehicle Status",
+                        icon = Icons.Default.DirectionsCar,
                         labels = listOf("Running", "Idle", "Parked", "Offline"),
-                        values = listOf(running, idle, parked, offline),
-                        barColors = listOf("#4CAF50", "#FFC107", "#2196F3", "#F44336"),
+                        values = listOf(
+                            (status?.moving ?: 0).toFloat(),
+                            (status?.idle ?: 0).toFloat(),
+                            (status?.parked ?: 0).toFloat(),
+                            (status?.offline ?: 0).toFloat()
+                        ),
+                        barColors = listOf("#0066CC", "#FF9900", "#666666", "#CC0000"),
                         onBarTapped = { label, value ->
                             dialogLabel = label
                             dialogValue = value
+                            dialogIcon = when(label) {
+                                "Running" -> Icons.Default.PlayArrow
+                                "Idle" -> Icons.Default.Pause
+                                "Parked" -> Icons.Default.LocalParking
+                                else -> Icons.Default.SignalCellularOff
+                            }
+                            dialogColor = when(label) {
+                                "Running" -> Color(0xFF0066CC)
+                                "Idle" -> Color(0xFFFF9900)
+                                "Parked" -> Color(0xFF666666)
+                                else -> Color(0xFFCC0000)
+                            }
                             dialogState = true
                         }
                     )
                 }
 
-                Spacer(modifier = Modifier.height(48.dp))
+                Spacer(modifier = Modifier.height(32.dp))
 
-                Text(
-                    text = "User Distribution",
-                    style = MaterialTheme.typography.titleMedium.copy(color = Color.White)
+                AnimatedVisibility(
+                    visible = isVisible,
+                    enter = fadeIn(animationSpec = tween(600, delayMillis = 600)) +
+                            slideInVertically(animationSpec = tween(600, delayMillis = 600))
+                ) {
+                    EnhancedDashboardSection(
+                        title = "User Distribution",
+                        icon = Icons.Default.People,
+                        labels = listOf("Dealers", "Clients", "Users"),
+                        values = listOf(12f, 17f, 40f),
+                        barColors = listOf("#0066CC", "#FF9900", "#009999"),
+                        onBarTapped = { label, value ->
+                            dialogLabel = label
+                            dialogValue = value
+                            dialogIcon = Icons.Default.Person
+                            dialogColor = when(label) {
+                                "Dealers" -> Color(0xFF0066CC)
+                                "Clients" -> Color(0xFFFF9900)
+                                else -> Color(0xFF009999)
+                            }
+                            dialogState = true
+                        }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+
+            if (dialogState) {
+                EnhancedDashboardDialog(
+                    label = dialogLabel,
+                    value = dialogValue,
+                    icon = dialogIcon,
+                    color = dialogColor,
+                    onDismiss = { dialogState = false }
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                val admins = 5f
-                val dealers = 12f
-                val clients = 17f
-                val users = 40f
+            }
+        }
+    }
+}
 
-                MinimalHorizontalBarChart(
-                    labels = listOf("Admins", "Dealers", "Clients", "Users"),
-                    values = listOf(admins, dealers, clients, users),
-                    barColors = listOf("#03A9F4", "#8BC34A"),
-                    onBarTapped = { label, value ->
-                        dialogLabel = label
-                        dialogValue = value
-                        dialogState = true
+@Composable
+private fun DashboardHeaderAdmin() {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Icon(
+            imageVector = Icons.Default.Dashboard,
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier.size(48.dp)
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "Fleet Dashboard",
+            style = MaterialTheme.typography.headlineMedium.copy(color = Color.White),
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.semantics {
+                contentDescription = "Fleet Dashboard heading"
+            }
+        )
+        Text(
+            text = "Real-time Overview",
+            style = MaterialTheme.typography.bodyMedium.copy(
+                color = Color.White.copy(alpha = 0.7f)
+            )
+        )
+    }
+}
+
+@Composable
+private fun StatsSummaryCardsAdmin(
+    totalVehicles: Int,
+    activeVehicles: Int
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        SummaryCard(
+            title = "Total Vehicles",
+            value = totalVehicles.toString(),
+            icon = Icons.Default.DirectionsCar,
+            color = Color(0xFF0066CC),
+            modifier = Modifier.weight(1f)
+        )
+        SummaryCard(
+            title = "Active Now",
+            value = activeVehicles.toString(),
+            icon = Icons.Default.Speed,
+            color = Color(0xFF00AA44),
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun SummaryCard(
+    title: String,
+    value: String,
+    icon: ImageVector,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    var isPressed by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.95f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)
+    )
+
+    Card(
+        modifier = modifier
+            .scale(scale)
+            .clip(RoundedCornerShape(16.dp)),
+        colors = CardDefaults.cardColors(
+            containerColor = Color.White.copy(alpha = 0.15f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(color.copy(alpha = 0.2f), RoundedCornerShape(12.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = color,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = value,
+                style = MaterialTheme.typography.headlineSmall.copy(
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+            )
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    color = Color.White.copy(alpha = 0.7f)
+                )
+            )
+        }
+    }
+}
+
+@Composable
+private fun EnhancedDashboardSection(
+    title: String,
+    icon: ImageVector,
+    labels: List<String>,
+    values: List<Float>,
+    barColors: List<String>,
+    onBarTapped: (String, Float) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = Color.White.copy(alpha = 0.12f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold
+                    ),
+                    modifier = Modifier.semantics {
+                        contentDescription = "$title section"
                     }
                 )
             }
 
-            if (dialogState) {
-                AlertDialog(
-                    onDismissRequest = { dialogState = false },
-                    title = { Text("Details for $dialogLabel") },
-                    text = { Text("Value: $dialogValue") },
-                    confirmButton = {
-                        TextButton(onClick = { dialogState = false }) {
-                            Text("OK")
-                        }
-                    },
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 8.dp
-                )
-            }
+            Spacer(modifier = Modifier.height(16.dp))
+
+            MinimalHorizontalBarChart(
+                labels = labels,
+                values = values,
+                barColors = barColors,
+                onBarTapped = onBarTapped
+            )
         }
+    }
+}
+
+@Composable
+private fun EnhancedDashboardDialog(
+    label: String,
+    value: Float,
+    icon: ImageVector,
+    color: Color,
+    onDismiss: () -> Unit
+) {
+    var showDialog by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        showDialog = true
+    }
+
+    AnimatedVisibility(
+        visible = showDialog,
+        enter = fadeIn() + scaleIn(initialScale = 0.8f),
+        exit = fadeOut() + scaleOut(targetScale = 0.8f)
+    ) {
+        AlertDialog(
+            onDismissRequest = {
+                showDialog = false
+                onDismiss()
+            },
+            icon = {
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .background(color.copy(alpha = 0.2f), RoundedCornerShape(16.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = color,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+            },
+            title = {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.headlineSmall.copy(
+                        fontWeight = FontWeight.Bold
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            },
+            text = {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Count",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = value.toInt().toString(),
+                        style = MaterialTheme.typography.displaySmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = color
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                FilledTonalButton(
+                    onClick = {
+                        showDialog = false
+                        onDismiss()
+                    },
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = color.copy(alpha = 0.2f),
+                        contentColor = color
+                    )
+                ) {
+                    Text("Got it")
+                }
+            },
+            containerColor = MaterialTheme.colorScheme.surface,
+            tonalElevation = 8.dp,
+            shape = RoundedCornerShape(24.dp)
+        )
     }
 }
 
@@ -174,72 +474,117 @@ fun MinimalHorizontalBarChart(
 ) {
     val context = LocalContext.current
 
-    val chart = remember {
-        HorizontalBarChart(context).apply {
-            setBackgroundColor(TRANSPARENT)
-            setDrawGridBackground(false)
-            setDrawBorders(false)
-            description.isEnabled = false
-            legend.isEnabled = false
-            setTouchEnabled(true)
-            setScaleEnabled(false)
-
-            axisLeft.isEnabled = false
-            axisRight.apply {
-                isEnabled = true
-                axisMinimum = 0f
-                textColor = android.graphics.Color.LTGRAY
-                textSize = 10f
-            }
-
-            xAxis.apply {
-                position = XAxis.XAxisPosition.BOTTOM
-                valueFormatter = IndexAxisValueFormatter(labels)
-                setDrawGridLines(false)
-                setDrawAxisLine(false)
-                setDrawLabels(true)
-                granularity = 1f
-                isGranularityEnabled = true
-                labelCount = labels.size
-                textColor = android.graphics.Color.LTGRAY
-                textSize = 10f
-            }
-
-            setOnChartValueSelectedListener(object : OnChartValueSelectedListener {
-                override fun onValueSelected(e: Entry?, h: Highlight?) {
-                    e?.let {
-                        val index = it.x.toInt()
-                        onBarTapped(labels[index], it.y)
-                    }
-                }
-
-                override fun onNothingSelected() {}
-            })
+    val normalizedColors = remember(barColors, values) {
+        if (barColors.size < values.size) {
+            barColors + List(values.size - barColors.size) { "#9E9E9E" }
+        } else {
+            barColors
         }
     }
 
-    LaunchedEffect(values) {
-        val entries = values.mapIndexed { i, v -> BarEntry(i.toFloat(), v) }
-        val dataSet = BarDataSet(entries, "").apply {
-            colors = barColors.map { android.graphics.Color.parseColor(it) }
-            valueTextSize = 12f
-            valueTextColor = android.graphics.Color.WHITE
-            setDrawValues(true)
+    val chart = remember(labels.size) {
+        HorizontalBarChart(context).apply {
+            configureChartAppearance()
+            configureAxes(labels)
+        }
+    }
+
+    LaunchedEffect(labels) {
+        chart.setOnChartValueSelectedListener(object : OnChartValueSelectedListener {
+            override fun onValueSelected(e: Entry?, h: Highlight?) {
+                e?.let {
+                    val index = it.x.toInt()
+                    if (index in labels.indices && index in values.indices) {
+                        onBarTapped(labels[index], it.y)
+                    }
+                }
+            }
+
+            override fun onNothingSelected() {}
+        })
+    }
+
+    LaunchedEffect(values, normalizedColors) {
+        chart.clear()
+
+        if (values.isNotEmpty()) {
+            val entries = values.mapIndexed { i, v -> BarEntry(i.toFloat(), v) }
+            val dataSet = BarDataSet(entries, "").apply {
+                colors = normalizedColors.map {
+                    try {
+                        AndroidColor.parseColor(it)
+                    } catch (e: IllegalArgumentException) {
+                        AndroidColor.GRAY
+                    }
+                }
+                valueTextSize = 13f
+                valueTextColor = AndroidColor.WHITE
+                setDrawValues(true)
+                valueFormatter = object : com.github.mikephil.charting.formatter.ValueFormatter() {
+                    override fun getFormattedValue(value: Float): String {
+                        return value.toInt().toString()
+                    }
+                }
+            }
+
+            chart.data = BarData(dataSet).apply {
+                barWidth = 0.6f
+            }
         }
 
-        chart.data = BarData(dataSet).apply {
-            barWidth = 0.5f
-        }
-
+        chart.animateY(800)
         chart.invalidate()
     }
 
     AndroidView(
         modifier = modifier
-            .fillMaxWidth(0.9f)
-            .height(260.dp),
+            .fillMaxWidth()
+            .height(280.dp)
+            .semantics {
+                contentDescription = "Horizontal bar chart showing ${labels.joinToString()}"
+            },
         factory = { chart }
     )
+}
+
+private fun HorizontalBarChart.configureChartAppearance() {
+    setBackgroundColor(AndroidColor.TRANSPARENT)
+    setDrawGridBackground(false)
+    setDrawBorders(false)
+    description.isEnabled = false
+    legend.isEnabled = false
+    setTouchEnabled(true)
+    setScaleEnabled(false)
+    setPinchZoom(false)
+    isDoubleTapToZoomEnabled = false
+    extraBottomOffset = 10f
+}
+
+private fun HorizontalBarChart.configureAxes(labels: List<String>) {
+    axisLeft.isEnabled = false
+    axisRight.apply {
+        isEnabled = true
+        axisMinimum = 0f
+        textColor = AndroidColor.WHITE
+        textSize = 11f
+        setDrawGridLines(true)
+        gridColor = AndroidColor.argb(40, 255, 255, 255)
+        gridLineWidth = 1f
+    }
+
+    xAxis.apply {
+        position = XAxis.XAxisPosition.BOTTOM
+        valueFormatter = IndexAxisValueFormatter(labels)
+        setDrawGridLines(false)
+        setDrawAxisLine(false)
+        setDrawLabels(true)
+        granularity = 1f
+        isGranularityEnabled = true
+        labelCount = labels.size
+        textColor = AndroidColor.WHITE
+        textSize = 11f
+        yOffset = 5f
+    }
 }
 
 @Preview(showBackground = true)

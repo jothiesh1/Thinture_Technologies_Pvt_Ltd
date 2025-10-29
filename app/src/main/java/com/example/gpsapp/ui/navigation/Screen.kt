@@ -64,5 +64,6 @@ sealed class Screen(val route: String) {
 
 
 
-    object Logout : Screen("logout")
-}
+    object Logout : Screen("logout/{role}") {
+        fun createRoute(role: String) = "logout/$role"
+    }}

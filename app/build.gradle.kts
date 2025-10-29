@@ -85,6 +85,9 @@ dependencies {
     // osmdroid map
     implementation("org.osmdroid:osmdroid-android:6.1.20")
 
+    // Google Play Services - Location (for GPS functionality)
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+
     // Networking
     implementation("com.squareup.retrofit2:retrofit:3.0.0")
     implementation("com.squareup.retrofit2:converter-gson:3.0.0")
@@ -108,9 +111,9 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
+    // Additional libraries
     implementation("com.google.accompanist:accompanist-swiperefresh:0.36.0")
-
     implementation("androidx.datastore:datastore-preferences:1.1.7")
-
     implementation("androidx.compose.ui:ui-text:")
+    implementation("com.itextpdf:itextg:5.5.10")
 }
